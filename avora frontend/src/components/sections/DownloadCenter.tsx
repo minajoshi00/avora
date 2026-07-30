@@ -88,13 +88,21 @@ export function DownloadCenter() {
       setTimeout(() => {
         setDownloadState('downloading');
         
-        // Create a hidden iframe to track actual download
-        const downloadFrame = document.createElement('iframe');
-        downloadFrame.style.display = 'none';
-        document.body.appendChild(downloadFrame);
+        // Create a hidden anchor element to trigger the download
+        const downloadLink = document.createElement('a');
+        downloadLink.href = downloadUrl;
+        downloadLink.style.display = 'none';
+        downloadLink.target = '_blank';
+        downloadLink.rel = 'noopener noreferrer';
+        document.body.appendChild(downloadLink);
         
-        // Set the iframe source to trigger the download
-        downloadFrame.src = downloadUrl;
+        // Trigger the download by clicking the hidden link
+        downloadLink.click();
+        
+        // Remove the element after triggering
+        setTimeout(() => {
+          document.body.removeChild(downloadLink);
+        }, 100);
         
         // Simulate progress (real browser downloads don't expose progress easily)
         let progress = 0;
@@ -112,11 +120,6 @@ export function DownloadCenter() {
           if (progressRef.current) clearInterval(progressRef.current);
           setDownloadProgress(100);
           setDownloadState('ready');
-          
-          // Remove the iframe after completion
-          setTimeout(() => {
-            document.body.removeChild(downloadFrame);
-          }, 1000);
         }, 3000);
       }, 1800);
       
