@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { versions, getLatestVersion, getDownloadUrl, type Version } from '../../lib/versions';
 import { platformDetector } from '../../lib/platform-detection';
 import { cn } from '../../lib/utils';
+import { trackDownload } from '../../lib/analytics';
 import {
   Download,
   ChevronDown,
@@ -81,6 +82,9 @@ export function DownloadCenter() {
         setDownloadState('error');
         return;
       }
+
+      // Track download event
+      trackDownload(activeVersion.version, selectedPlatform, 'download_center');
 
       // Simulate preparation and connecting phases
       setTimeout(() => setDownloadState('connecting'), 800);

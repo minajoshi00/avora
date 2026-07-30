@@ -1733,6 +1733,30 @@ class SettingsPage(QWidget):
             "Allow conversations to be stored locally.",
         )
 
+        # Analytics & Data Section
+        self.add_section(
+            "Analytics & Data",
+            "Help improve AVORA by sharing anonymous usage data.",
+        )
+
+        self.add_switch(
+            "analytics.enabled",
+            "Enable Analytics",
+            "Allow anonymous usage analytics to help improve the application.",
+        )
+
+        self.add_switch(
+            "analytics.anonymous_usage_data",
+            "Anonymous Usage Data",
+            "Share anonymous usage statistics. No personal information is collected.",
+        )
+
+        self.add_switch(
+            "analytics.update_checks",
+            "Automatic Update Checks",
+            "Periodically check for new versions in the background.",
+        )
+
         self.add_spacer()
 
     # ============================================================
