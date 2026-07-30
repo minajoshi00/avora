@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SectionHeading } from '../ui/SectionHeading';
 import { Button } from '../ui/Button';
-import { versions, getLatestVersion, type Version } from '../../lib/versions';
+import { versions, getLatestVersion, getDownloadUrl, type Version } from '../../lib/versions';
 import { platformDetector } from '../../lib/platform-detection';
 import { cn } from '../../lib/utils';
 import {
@@ -65,27 +65,66 @@ export function DownloadCenter() {
     }
   }, []);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (downloadState === 'downloading' || downloadState === 'preparing' || downloadState === 'connecting') return;
 
+    // Reset any previous intervals
+    if (progressRef.current) clearInterval(progressRef.current);
     setDownloadState('preparing');
     setDownloadProgress(0);
 
-    setTimeout(() => setDownloadState('connecting'), 800);
-    setTimeout(() => {
-      setDownloadState('downloading');
-      let progress = 0;
-      progressRef.current = setInterval(() => {
-        progress += Math.random() * 8 + 2;
-        if (progress >= 100) {
-          progress = 100;
+    try {
+      // Get the download URL for the selected platform
+      const downloadUrl = getDownloadUrl(activeVersion, selectedPlatform);
+      
+      if (!downloadUrl || downloadUrl === '#') {
+        setDownloadState('error');
+        return;
+      }
+
+      // Simulate preparation and connecting phases
+      setTimeout(() => setDownloadState('connecting'), 800);
+      
+      setTimeout(() => {
+        setDownloadState('downloading');
+        
+        // Create a hidden iframe to track actual download
+        const downloadFrame = document.createElement('iframe');
+        downloadFrame.style.display = 'none';
+        document.body.appendChild(downloadFrame);
+        
+        // Set the iframe source to trigger the download
+        downloadFrame.src = downloadUrl;
+        
+        // Simulate progress (real browser downloads don't expose progress easily)
+        let progress = 0;
+        progressRef.current = setInterval(() => {
+          progress += Math.random() * 12 + 3;
+          if (progress >= 90) {
+            progress = 90;
+            if (progressRef.current) clearInterval(progressRef.current);
+          }
+          setDownloadProgress(Math.min(progress, 90));
+        }, 300);
+
+        // Clean up after a realistic download time
+        setTimeout(() => {
           if (progressRef.current) clearInterval(progressRef.current);
           setDownloadProgress(100);
-          setTimeout(() => setDownloadState('ready'), 300);
-        }
-        setDownloadProgress(Math.min(progress, 100));
-      }, 200);
-    }, 1800);
+          setDownloadState('ready');
+          
+          // Remove the iframe after completion
+          setTimeout(() => {
+            document.body.removeChild(downloadFrame);
+          }, 1000);
+        }, 3000);
+      }, 1800);
+      
+    } catch (error) {
+      console.error('Download failed:', error);
+      if (progressRef.current) clearInterval(progressRef.current);
+      setDownloadState('error');
+    }
   };
 
   const resetDownload = () => {
@@ -255,6 +294,11 @@ export function DownloadCenter() {
                           <p className="text-xs text-gray-500 text-center mt-2">
                             {platform.type === 'installer' ? 'Installer' : 'Portable'} · {platform.size}
                             {platform.checksum && ` · ${platform.checksum.slice(0, 20)}...`}
+                          </p>
+                        )}
+                        {selectedPlatform === 'windows' && (
+                          <p className="text-[10px] text-yellow-400/80 text-center mt-3 leading-relaxed">
+                            Note: If Windows Defender shows a SmartScreen prompt, click "More info" → "Run anyway"
                           </p>
                         )}
                       </motion.div>

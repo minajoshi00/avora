@@ -12,10 +12,11 @@ export interface VersionReleaseNote {
 
 export interface VersionPlatform {
   platform: 'windows' | 'macos' | 'linux';
-  url: string; // placeholder URL - replace with actual installer URL
+  url: string; // Direct download URL for the installer
   size: string;
   type: 'installer' | 'portable';
-  checksum?: string;
+  checksum?: string; // SHA256 checksum for integrity verification
+  fileName?: string; // Optional: filename for the installer
 }
 
 export interface Version {
@@ -77,14 +78,14 @@ export const versions: Version[] = [
     platforms: [
       {
         platform: 'windows',
-        url: '#download-avora',
+        url: 'https://github.com/minajoshi00/avora-v1/releases/download/v1.0.0/AVORA-Setup.exe',
         size: '245 MB',
         type: 'installer',
         checksum: 'SHA256: a3f5b8c1d2e4f7...',
       },
       {
         platform: 'windows',
-        url: '#download-avora-portable',
+        url: 'https://github.com/minajoshi00/avora-v1/releases/download/v1.0.0/AVORA-Setup.exe',
         size: '238 MB',
         type: 'portable',
       },
