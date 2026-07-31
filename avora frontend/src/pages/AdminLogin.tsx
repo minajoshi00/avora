@@ -5,13 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { verifyPassword, isLockedOut, getLockoutRemaining, getFailedAttempts } from '../lib/admin';
 import { trackEvent } from '../lib/analytics';
 
-/**
- * Admin Login Page
- * 
- * Hidden entry point for developer access.
- * Access via /admin route.
- */
-export default function AdminLogin() {
+export function AdminLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -19,12 +13,9 @@ export default function AdminLogin() {
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
 
   useEffect(() => {
-    // Check lockout status
     if (isLockedOut()) {
       setLockedOut(true);
       setLockoutRemaining(getLockoutRemaining());
-      
-      // Update countdown
       const interval = setInterval(() => {
         const remaining = getLockoutRemaining();
         setLockoutRemaining(remaining);
@@ -33,7 +24,6 @@ export default function AdminLogin() {
           clearInterval(interval);
         }
       }, 1000);
-      
       return () => clearInterval(interval);
     }
   }, []);
@@ -41,30 +31,25 @@ export default function AdminLogin() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     if (lockedOut) {
       setError(`Too many failed attempts. Please wait ${lockoutRemaining} seconds.`);
       return;
     }
-    
+
     setIsLoading(true);
-    
-    // Simulate slight delay for security
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     const success = verifyPassword(password);
-    
+
     if (success) {
       trackEvent('admin_login', { success: true });
-      // Redirect to dashboard
-      window.location.href = '/admin/dashboard';
+      window.location.hash = '#/admin/overview';
     } else {
       const attempts = getFailedAttempts();
       setError(`Invalid password. ${5 - attempts} attempts remaining.`);
       trackEvent('admin_login', { success: false, attempts });
       setIsLoading(false);
-      
-      // Check if now locked out
       if (isLockedOut()) {
         setLockedOut(true);
         setLockoutRemaining(getLockoutRemaining());
@@ -78,6 +63,16 @@ export default function AdminLogin() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        window.location.hash = '';
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-4">
       <motion.div
@@ -85,7 +80,6 @@ export default function AdminLogin() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-white/[0.08] mb-4">
             <span className="text-3xl">🔒</span>
@@ -94,10 +88,8 @@ export default function AdminLogin() {
           <p className="text-sm text-gray-400">Enter admin password to continue</p>
         </div>
 
-        {/* Login Form */}
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Error Message */}
             <AnimatePresence>
               {error && (
                 <motion.div
@@ -111,7 +103,6 @@ export default function AdminLogin() {
               )}
             </AnimatePresence>
 
-            {/* Lockout Warning */}
             <AnimatePresence>
               {lockedOut && (
                 <motion.div
@@ -129,7 +120,6 @@ export default function AdminLogin() {
               )}
             </AnimatePresence>
 
-            {/* Password Input */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Password
@@ -145,7 +135,6 @@ export default function AdminLogin() {
               />
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={lockedOut || isLoading || !password}
@@ -154,14 +143,12 @@ export default function AdminLogin() {
               {isLoading ? 'Authenticating...' : 'Access Console'}
             </button>
 
-            {/* Info */}
             <p className="text-xs text-gray-500 text-center">
               Authorized personnel only. All access is logged.
             </p>
           </form>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-xs text-gray-600 mt-6">
           AVORA Developer Console v1.0
         </p>
@@ -169,3 +156,5 @@ export default function AdminLogin() {
     </div>
   );
 }
+
+export default AdminLogin;
