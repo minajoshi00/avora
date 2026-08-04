@@ -32,6 +32,12 @@ from avora_safety import (
     log_activity,
     check_permission,
     is_panic,
+    redact_sensitive,
+)
+from automation_permissions import (
+    get_permission_manager,
+    PermissionLevel,
+    format_permission_message,
 )
 
 
@@ -148,11 +154,21 @@ def execute_step(
         result["error"] = "Cancelled by panic stop"
         return result
 
-    # Check permission
-    if not check_permission(step_permission, step_name):
+    # NEW: Check permission with three-tier system
+    perm_manager = get_permission_manager()
+    permission_level = perm_manager.get_permission_level(step_action)
+    
+    # For safe actions (Level 1), proceed automatically
+    if permission_level == PermissionLevel.SAFE:
+        pass  # Automatic
+    
+    # For Level 2 and 3, check if we have stored permission
+    elif not perm_manager.is_permission_granted(step_action):
         result["status"] = STATUS_FAILED
-        result["error"] = f"Permission denied for action: {step_permission}"
-        log_activity("AUTOMATION", f"Step failed (permission): {step_name}", level="warning")
+        result["error"] = f"Permission required for action: {step_action} (Level {permission_level})"
+        result["permission_required"] = True
+        result["permission_level"] = permission_level
+        log_activity("AUTOMATION", f"Step requires permission: {step_name} (Level {permission_level})", level="warning")
         return result
 
     # Execute the step

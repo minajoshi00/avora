@@ -56,9 +56,7 @@ from PySide6.QtGui import (
     QFont,
     QIcon,
     QPixmap,
-    QTextCursor,
     QPainter,
-    QRadialGradient,
 )
 
 from PySide6.QtWidgets import (
@@ -154,6 +152,10 @@ from companion_intelligence import (
     CompanionMood,
     UserState,
     InterventionType,
+)
+
+from screen_awareness import (
+    ScreenAwareness,
 )
 
 from chat_sidebar import (
@@ -279,6 +281,9 @@ class MainWindow(QWidget):
         self.companion = None
         self.companion_timer = None
         self.behavior_controller = None
+
+        # Screen Awareness System
+        self.screen_awareness = None
 
         # Neural background animation
         self.neural_canvas = None
@@ -442,7 +447,7 @@ class MainWindow(QWidget):
 
         self.neural_timer = QTimer()
         self.neural_timer.timeout.connect(self.animate_neural_background)
-        self.neural_timer.start(50)  # 20 FPS
+        self.neural_timer.start(100)  # 10 FPS - smoother, less CPU
 
     def animate_neural_background(self):
         """Animate neural nodes and repaint."""
@@ -1215,8 +1220,7 @@ class MainWindow(QWidget):
         )
 
         self.add_ai_message_rich(
-            "Hey brooo! 😎🔥 I'm your AI Friend.\n\n"
-            "What are we building today?"
+            "Hey bro! 👋 Good to see you."
         )
 
     # ========================================================
@@ -1450,6 +1454,27 @@ class MainWindow(QWidget):
             self._start_companion_timer()
         except Exception as e:
             print("[COMPANION] Failed to initialize:", e)
+
+    def start_screen_awareness(self):
+        """Initialize and start the Screen Awareness system."""
+        try:
+            if not hasattr(self, 'screen_awareness') or self.screen_awareness is None:
+                from screen_awareness import ScreenAwareness
+                self.screen_awareness = ScreenAwareness(main_window=self)
+            self.screen_awareness.start()
+            print("[SCREEN AWARENESS] Started")
+        except Exception as e:
+            print("[SCREEN AWARENESS] Failed to start:", e)
+
+    def stop_screen_awareness(self):
+        """Stop the screen awareness system."""
+        if hasattr(self, 'screen_awareness') and self.screen_awareness is not None:
+            try:
+                self.screen_awareness.stop()
+                print("[SCREEN AWARENESS] Stopped")
+            except Exception:
+                pass
+            self.screen_awareness = None
 
     def stop_companion(self):
         """Stop the companion intelligence system."""
@@ -1730,6 +1755,20 @@ class MainWindow(QWidget):
             self.apply_character_size(
                 new_value
             )
+
+        # ----------------------------------------------------
+        # SCREEN AWARENESS
+        # ----------------------------------------------------
+
+        elif path == "screen_awareness.enabled":
+
+            if new_value:
+
+                self.start_screen_awareness()
+
+            else:
+
+                self.stop_screen_awareness()
 
     # ========================================================
     # CHARACTER SIZE
@@ -2114,7 +2153,6 @@ class MainWindow(QWidget):
         """Animate widget fading/sliding in."""
         try:
             from PySide6.QtCore import QPropertyAnimation, QEasingCurve
-            from PySide6.QtGui import QPoint
             
             widget.setWindowOpacity(0.0)
             current_pos = widget.pos()
@@ -2134,10 +2172,6 @@ class MainWindow(QWidget):
             
             opacity_anim.start()
             pos_anim.start()
-            
-            if not hasattr(self, '_active_animations'):
-                self._active_animations = []
-            self._active_animations.extend([opacity_anim, pos_anim])
         except Exception:
             pass
 
@@ -3980,6 +4014,41 @@ class MainWindow(QWidget):
                 pass
 
         # ----------------------------------------------------
+        # STOP TIMERS
+        # ----------------------------------------------------
+
+        if self.neural_timer is not None:
+            try:
+                self.neural_timer.stop()
+            except Exception:
+                pass
+
+        if self.companion_timer is not None:
+            try:
+                self.companion_timer.stop()
+            except Exception:
+                pass
+
+        # ----------------------------------------------------
+        # STOP SCREEN AWARENESS
+        # ----------------------------------------------------
+
+        if hasattr(self, 'screen_awareness') and self.screen_awareness is not None:
+            try:
+                self.screen_awareness.stop()
+            except Exception:
+                pass
+
+        # ----------------------------------------------------
+        # STOP ACTIVITY MONITOR
+        # ----------------------------------------------------
+
+        try:
+            self.stop_activity_monitor()
+        except Exception:
+            pass
+
+        # ----------------------------------------------------
         # CLEANUP AVORA SYSTEMS
         # ----------------------------------------------------
 
@@ -4195,6 +4264,18 @@ def main():
         window.start_companion()
     except Exception as e:
         print("[COMPANION] Failed to start:", e)
+
+    # ====================================================
+    # START SCREEN AWARENESS IF ENABLED
+    # ====================================================
+
+    try:
+        from settings import is_screen_awareness_enabled
+        if is_screen_awareness_enabled():
+            window.start_screen_awareness()
+            print("[SCREEN AWARENESS] Auto-started")
+    except Exception as e:
+        print("[SCREEN AWARENESS] Failed to auto-start:", e)
 
     # ====================================================
     # AVORA STATUS CHECK TIMER

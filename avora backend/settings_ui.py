@@ -1285,6 +1285,43 @@ class SettingsPage(QWidget):
 
         self.add_spacer()
 
+        # ============================================================
+        # SCREEN AWARENESS
+        # ============================================================
+
+        self.add_section(
+            "Screen Awareness",
+            "Control how AVORA understands what is happening on your screen.",
+        )
+
+        self.add_switch(
+            "screen_awareness.enabled",
+            "Enable Screen Awareness",
+            "When enabled, AVORA periodically understands what is happening on your screen to provide smarter suggestions and conversations.",
+        )
+
+        self.add_combo(
+            "screen_awareness.analysis_interval_seconds",
+            "Screen Analysis Frequency",
+            "How often AVORA analyzes your screen. Lower values are more responsive but use more resources.",
+            [2, 5, 10, 30],
+            ["2 seconds", "5 seconds (Default)", "10 seconds", "30 seconds"],
+        )
+
+        self.add_switch(
+            "screen_awareness.only_active_window",
+            "Only analyze active window",
+            "Only analyze the currently active window for better performance and privacy.",
+        )
+
+        self.add_switch(
+            "screen_awareness.pause_while_gaming",
+            "Pause while gaming",
+            "Temporarily pause screen awareness while you are gaming.",
+        )
+
+        self.add_spacer()
+
     # ============================================================
     # VOICE
     # ============================================================

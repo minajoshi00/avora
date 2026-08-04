@@ -70,14 +70,18 @@ const sectionLabels: Record<Section, string> = {
   overview: 'Dashboard',
   analytics: 'Website Analytics',
   users: 'Visitors',
+  visitors: 'Visitors',
   downloads: 'Downloads',
   feedback: 'Feedback',
   features: 'Feature Requests',
   bugs: 'Bug Reports',
   releases: 'Releases',
   health: 'System Status',
+  system: 'System',
   changelog: 'Logs',
+  logs: 'Logs',
   updates: 'Charts',
+  charts: 'Charts',
   search: 'Recent Activity',
 };
 

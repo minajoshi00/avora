@@ -1,6 +1,6 @@
 """
 ===============================================================
-                    AI FRIEND SETTINGS SYSTEM
+                     AI FRIEND SETTINGS SYSTEM
 ===============================================================
 
 Central configuration manager for the entire AI Friend application.
@@ -921,6 +921,31 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
         "default_duration_minutes": 25,
     },
+
+
+    # =========================================================
+    # SCREEN AWARENESS
+    # =========================================================
+
+    "screen_awareness": {
+        "enabled": False,
+
+        "analysis_interval_seconds": 5,
+
+        "only_active_window": True,
+
+        "pause_while_gaming": True,
+
+        "use_local_vision": True,
+
+        "use_cloud_vision": False,
+
+        "cloud_vision_provider": "none",
+
+        "max_capture_fps": 2,
+
+        "idle_pause_seconds": 60,
+    },
 }
 
 
@@ -954,6 +979,14 @@ VALID_RESPONSE_STYLES = {
     "professional",
     "casual",
     "creative",
+}
+
+
+VALID_SCREEN_ANALYSIS_INTERVALS = {
+    2,
+    5,
+    10,
+    30,
 }
 
 
@@ -1267,6 +1300,77 @@ def _validate_settings(
 
 
     # ---------------------------------------------------------
+    # SCREEN AWARENESS
+    # ---------------------------------------------------------
+
+    screen = settings.get("screen_awareness", {})
+
+    screen["enabled"] = bool(
+        screen.get("enabled", False)
+    )
+
+    try:
+
+        screen["analysis_interval_seconds"] = int(
+            screen.get("analysis_interval_seconds", 5)
+        )
+
+    except (TypeError, ValueError):
+
+        screen["analysis_interval_seconds"] = 5
+
+    if screen["analysis_interval_seconds"] not in VALID_SCREEN_ANALYSIS_INTERVALS:
+
+        screen["analysis_interval_seconds"] = 5
+
+    screen["only_active_window"] = bool(
+        screen.get("only_active_window", True)
+    )
+
+    screen["pause_while_gaming"] = bool(
+        screen.get("pause_while_gaming", True)
+    )
+
+    screen["use_local_vision"] = bool(
+        screen.get("use_local_vision", True)
+    )
+
+    screen["use_cloud_vision"] = bool(
+        screen.get("use_cloud_vision", False)
+    )
+
+    try:
+
+        screen["max_capture_fps"] = int(
+            screen.get("max_capture_fps", 2)
+        )
+
+    except (TypeError, ValueError):
+
+        screen["max_capture_fps"] = 2
+
+    screen["max_capture_fps"] = max(
+        1,
+        min(10, screen["max_capture_fps"])
+    )
+
+    try:
+
+        screen["idle_pause_seconds"] = int(
+            screen.get("idle_pause_seconds", 60)
+        )
+
+    except (TypeError, ValueError):
+
+        screen["idle_pause_seconds"] = 60
+
+    screen["idle_pause_seconds"] = max(
+        10,
+        min(600, screen["idle_pause_seconds"])
+    )
+
+
+    # ---------------------------------------------------------
     # SYSTEM
     # ---------------------------------------------------------
 
@@ -1477,6 +1581,7 @@ def _load_settings() -> Dict[str, Any]:
                 )
 
                 if SETTINGS_FILE.exists():
+
                     shutil.copy2(
                         SETTINGS_FILE,
                         corrupted_backup
@@ -1498,9 +1603,17 @@ def _load_settings() -> Dict[str, Any]:
             loaded
         )
 
+        # -----------------------------------------------------
+        # VALIDATE
+        # -----------------------------------------------------
+
         _settings = _validate_settings(
             _settings
         )
+
+        # -----------------------------------------------------
+        # SAVE REPAIRED SETTINGS
+        # -----------------------------------------------------
 
         _atomic_save(
             _settings
@@ -1512,39 +1625,7 @@ def _load_settings() -> Dict[str, Any]:
 
 
 # =============================================================
-# SAVE
-# =============================================================
-
-def save_settings(
-    create_backup: bool = False,
-) -> bool:
-    """
-    Save the current settings.
-
-    Args:
-        create_backup:
-            Whether to create a backup before saving.
-    """
-
-    global _settings
-
-    with _lock:
-
-        if create_backup:
-
-            _create_backup()
-
-        _settings = _validate_settings(
-            _settings
-        )
-
-        return _atomic_save(
-            _settings
-        )
-
-
-# =============================================================
-# GET SETTING
+# PUBLIC API
 # =============================================================
 
 def get_setting(
@@ -1556,21 +1637,14 @@ def get_setting(
 
     Example:
 
-        get_setting("voice.enabled")
-
-        get_setting("voice.volume")
-
-        get_setting(
-            "unknown.setting",
-            False
-        )
+        volume = get_setting("voice.volume", 1.0)
     """
 
-    if not path:
-
-        return default
-
     with _lock:
+
+        if not _settings:
+
+            _load_settings()
 
         value = _get_nested(
             _settings,
@@ -1581,41 +1655,26 @@ def get_setting(
 
             return default
 
-        return copy.deepcopy(
-            value
-        )
+        return value
 
-
-# =============================================================
-# SET SETTING
-# =============================================================
 
 def set_setting(
     path: str,
     value: Any,
-    save: bool = True,
 ) -> bool:
     """
-    Change one setting.
+    Set a setting using dot notation.
 
     Example:
 
-        set_setting(
-            "voice.enabled",
-            False
-        )
+        success = set_setting("voice.volume", 0.8)
     """
-
-    if not path:
-
-        return False
 
     with _lock:
 
-        old_value = _get_nested(
-            _settings,
-            path
-        )
+        if not _settings:
+
+            _load_settings()
 
         _set_nested(
             _settings,
@@ -1623,35 +1682,22 @@ def set_setting(
             value
         )
 
-        _validate_settings(
+        saved = _atomic_save(
             _settings
         )
 
-        new_value = _get_nested(
-            _settings,
-            path
-        )
+        if saved:
 
-        if save:
+            _notify_listeners(
+                path,
+                value
+            )
 
-            save_settings()
+        return saved
 
-        _notify_listeners(
-            path,
-            old_value,
-            new_value
-        )
-
-        return True
-
-
-# =============================================================
-# UPDATE MULTIPLE SETTINGS
-# =============================================================
 
 def update_settings(
     updates: Dict[str, Any],
-    save: bool = True,
 ) -> bool:
     """
     Update multiple settings at once.
@@ -1660,183 +1706,100 @@ def update_settings(
 
         update_settings({
             "voice": {
-                "enabled": False,
-                "volume": 0.8,
-            },
-
-            "character": {
                 "enabled": True,
-            },
+                "volume": 0.9,
+            }
         })
     """
 
-    if not isinstance(
-        updates,
-        dict
-    ):
-
-        return False
-
     with _lock:
 
-        old_settings = copy.deepcopy(
-            _settings
-        )
+        if not _settings:
 
-        _settings.clear()
+            _load_settings()
 
         _settings.update(
             _deep_merge(
-                old_settings,
+                _settings,
                 updates
             )
         )
 
-        _validate_settings(
+        _settings = _validate_settings(
             _settings
         )
 
-        if save:
-
-            save_settings()
-
-        _notify_all_changes(
-            old_settings,
+        saved = _atomic_save(
             _settings
         )
 
-        return True
+        if saved:
+
+            for path, value in _flatten_dict(
+                updates
+            ):
+
+                _notify_listeners(
+                    path,
+                    value
+                )
+
+        return saved
 
 
-# =============================================================
-# GET ALL SETTINGS
-# =============================================================
-
-def get_all_settings() -> Dict[str, Any]:
+def _flatten_dict(
+    d: Dict[str, Any],
+    parent_key: str = "",
+) -> list:
     """
-    Return a safe copy of every setting.
+    Flatten a nested dict into dot-notation paths.
     """
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}.{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(_flatten_dict(v, new_key))
+        else:
+            items.append((new_key, v))
+    return items
 
-    with _lock:
-
-        return copy.deepcopy(
-            _settings
-        )
-
-
-# =============================================================
-# DELETE SETTING
-# =============================================================
-
-def delete_setting(
-    path: str,
-    save: bool = True,
-) -> bool:
-    """
-    Delete a setting.
-
-    Usually used for advanced settings.
-    """
-
-    with _lock:
-
-        deleted = _delete_nested(
-            _settings,
-            path
-        )
-
-        if deleted and save:
-
-            save_settings()
-
-        return deleted
-
-
-# =============================================================
-# RESET ONE SETTING
-# =============================================================
-
-def reset_setting(
-    path: str,
-    save: bool = True,
-) -> bool:
-    """
-    Reset one setting to its default value.
-    """
-
-    default_value = _get_nested(
-        DEFAULT_SETTINGS,
-        path
-    )
-
-    if default_value is None:
-
-        return False
-
-    return set_setting(
-        path,
-        copy.deepcopy(
-            default_value
-        ),
-        save=save
-    )
-
-
-# =============================================================
-# RESET CATEGORY
-# =============================================================
 
 def reset_category(
     category: str,
-    save: bool = True,
 ) -> bool:
     """
-    Reset an entire category.
-
-    Example:
-
-        reset_category("voice")
+    Reset a settings category to defaults.
     """
 
-    if category not in DEFAULT_SETTINGS:
-
-        return False
-
     with _lock:
+
+        if category not in DEFAULT_SETTINGS:
+
+            return False
+
+        if not _settings:
+
+            _load_settings()
 
         _settings[category] = copy.deepcopy(
             DEFAULT_SETTINGS[category]
         )
 
-        if save:
-
-            save_settings()
-
-        return True
-
-
-# =============================================================
-# RESET EVERYTHING
-# =============================================================
-
-def reset_all_settings(
-    create_backup: bool = True,
-) -> bool:
-    """
-    Reset the entire application to factory defaults.
-    """
-
-    global _settings
-
-    with _lock:
-
-        if create_backup:
-
-            _create_backup()
-
-        old_settings = copy.deepcopy(
+        _settings = _validate_settings(
             _settings
         )
+
+        return _atomic_save(
+            _settings
+        )
+
+
+def reset_all_settings() -> bool:
+    """
+    Reset all settings to defaults.
+    """
+
+    with _lock:
 
         _settings = copy.deepcopy(
             DEFAULT_SETTINGS
@@ -1846,161 +1809,67 @@ def reset_all_settings(
             _settings
         )
 
-        success = _atomic_save(
+        return _atomic_save(
             _settings
         )
 
-        if success:
 
-            _notify_all_changes(
-                old_settings,
+# =============================================================
+# BACKUP & RESTORE
+# =============================================================
+
+def create_settings_backup() -> Optional[Path]:
+    """Create a manual backup of current settings."""
+    with _lock:
+        return _create_backup()
+
+
+def get_available_backups() -> list:
+    """Get list of available backup files."""
+    backups = []
+    try:
+        for file in sorted(
+            BACKUP_DIR.glob("settings_*.json"),
+            reverse=True,
+        ):
+            backups.append(file)
+    except Exception:
+        pass
+    return backups
+
+
+def restore_backup(
+    backup_path: Path,
+) -> bool:
+    """Restore settings from a backup file."""
+    try:
+
+        with open(
+            backup_path,
+            "r",
+            encoding="utf-8",
+        ) as file:
+
+            loaded = json.load(file)
+
+        with _lock:
+
+            _settings = _deep_merge(
+                DEFAULT_SETTINGS,
+                loaded
+            )
+
+            _settings = _validate_settings(
                 _settings
             )
 
-        return success
-
-
-# =============================================================
-# CHANGE LISTENERS
-# =============================================================
-
-def add_settings_listener(
-    callback: Callable[
-        [str, Any, Any],
-        None
-    ],
-) -> None:
-    """
-    Register a callback that runs whenever a setting changes.
-
-    Example:
-
-        def on_setting_changed(
-            path,
-            old_value,
-            new_value
-        ):
-            print(
-                path,
-                old_value,
-                new_value
+            return _atomic_save(
+                _settings
             )
 
-        add_settings_listener(
-            on_setting_changed
-        )
-    """
+    except Exception:
 
-    if not callable(callback):
-
-        return
-
-    with _lock:
-
-        if callback not in _listeners:
-
-            _listeners.append(
-                callback
-            )
-
-
-def remove_settings_listener(
-    callback: Callable,
-) -> None:
-    """
-    Remove a settings listener.
-    """
-
-    with _lock:
-
-        if callback in _listeners:
-
-            _listeners.remove(
-                callback
-            )
-
-
-def _notify_listeners(
-    path: str,
-    old_value: Any,
-    new_value: Any,
-) -> None:
-    """
-    Notify listeners safely.
-    """
-
-    if old_value == new_value:
-
-        return
-
-    for listener in list(
-        _listeners
-    ):
-
-        try:
-
-            listener(
-                path,
-                old_value,
-                new_value
-            )
-
-        except Exception:
-
-            # One broken listener should never
-            # crash the application.
-            pass
-
-
-def _notify_all_changes(
-    old_settings: Dict[str, Any],
-    new_settings: Dict[str, Any],
-    prefix: str = "",
-) -> None:
-    """
-    Recursively detect setting changes.
-    """
-
-    all_keys = set(
-        old_settings.keys()
-    ) | set(
-        new_settings.keys()
-    )
-
-    for key in all_keys:
-
-        path = (
-            f"{prefix}.{key}"
-            if prefix
-            else key
-        )
-
-        old_value = old_settings.get(
-            key
-        )
-
-        new_value = new_settings.get(
-            key
-        )
-
-        if (
-            isinstance(old_value, dict)
-            and isinstance(new_value, dict)
-        ):
-
-            _notify_all_changes(
-                old_value,
-                new_value,
-                path
-            )
-
-        elif old_value != new_value:
-
-            _notify_listeners(
-                path,
-                old_value,
-                new_value
-            )
+        return False
 
 
 # =============================================================
@@ -2008,31 +1877,29 @@ def _notify_all_changes(
 # =============================================================
 
 def export_settings(
-    file_path: str | Path,
+    export_path: Path,
 ) -> bool:
-    """
-    Export all settings to another JSON file.
-    """
-
+    """Export current settings to a file."""
     try:
 
-        file_path = Path(
-            file_path
-        )
+        with _lock:
 
-        file_path.parent.mkdir(
-            parents=True,
-            exist_ok=True
-        )
+            if not _settings:
+
+                _load_settings()
+
+            data = copy.deepcopy(
+                _settings
+            )
 
         with open(
-            file_path,
+            export_path,
             "w",
             encoding="utf-8",
         ) as file:
 
             json.dump(
-                get_all_settings(),
+                data,
                 file,
                 indent=4,
                 ensure_ascii=False,
@@ -2046,67 +1913,33 @@ def export_settings(
 
 
 def import_settings(
-    file_path: str | Path,
+    import_path: Path,
 ) -> bool:
-    """
-    Import settings from another JSON file.
-
-    Missing settings are automatically repaired
-    using the default settings.
-    """
-
+    """Import settings from a file."""
     try:
 
-        file_path = Path(
-            file_path
-        )
-
         with open(
-            file_path,
+            import_path,
             "r",
             encoding="utf-8",
         ) as file:
 
-            imported = json.load(
-                file
-            )
-
-        if not isinstance(
-            imported,
-            dict
-        ):
-
-            return False
-
-        old_settings = get_all_settings()
-
-        new_settings = _deep_merge(
-            DEFAULT_SETTINGS,
-            imported
-        )
-
-        new_settings = _validate_settings(
-            new_settings
-        )
+            loaded = json.load(file)
 
         with _lock:
 
-            _settings.clear()
-
-            _settings.update(
-                new_settings
+            _settings = _deep_merge(
+                DEFAULT_SETTINGS,
+                loaded
             )
 
-            save_settings(
-                create_backup=True
+            _settings = _validate_settings(
+                _settings
             )
 
-        _notify_all_changes(
-            old_settings,
-            new_settings
-        )
-
-        return True
+            return _atomic_save(
+                _settings
+            )
 
     except Exception:
 
@@ -2114,189 +1947,86 @@ def import_settings(
 
 
 # =============================================================
-# BACKUP MANAGEMENT
+# SETTINGS LISTENERS
 # =============================================================
 
-def create_settings_backup() -> Optional[str]:
+def add_settings_listener(
+    callback: Callable[[str, Any, Any], None],
+) -> None:
     """
-    Manually create a backup.
+    Add a listener for setting changes.
+
+    Callback receives (path, new_value, old_value).
     """
-
-    backup = _create_backup()
-
-    if backup:
-
-        return str(
-            backup
-        )
-
-    return None
+    with _lock:
+        if callback not in _listeners:
+            _listeners.append(callback)
 
 
-def get_available_backups() -> list[str]:
-    """
-    Return available settings backups.
-    """
+def remove_settings_listener(
+    callback: Callable[[str, Any, Any], None],
+) -> None:
+    """Remove a settings listener."""
+    with _lock:
+        if callback in _listeners:
+            _listeners.remove(callback)
 
-    try:
 
-        backups = sorted(
-            BACKUP_DIR.glob(
-                "*.json"
-            ),
-            reverse=True
-        )
-
-        return [
-            str(
-                backup
-            )
-            for backup in backups
-        ]
-
-    except Exception:
-
-        return []
+def _notify_listeners(
+    path: str,
+    new_value: Any,
+) -> None:
+    """Notify all listeners of a setting change."""
+    listeners = list(_listeners)
+    old_value = _get_nested(_settings, path) if _settings else None
+    for callback in listeners:
+        try:
+            callback(path, new_value, old_value)
+        except Exception:
+            pass
 
 
 # =============================================================
-# RESTORE BACKUP
-# =============================================================
-
-def restore_backup(
-    backup_path: str | Path,
-) -> bool:
-    """
-    Restore settings from a backup.
-    """
-
-    backup_path = Path(
-        backup_path
-    )
-
-    if not backup_path.exists():
-
-        return False
-
-    return import_settings(
-        backup_path
-    )
-
-
-# =============================================================
-# UTILITY CHECKS
+# CONVENIENCE FUNCTIONS
 # =============================================================
 
 def is_voice_enabled() -> bool:
-
     return bool(
-        get_setting(
-            "voice.enabled",
-            True
-        )
+        get_setting("voice.enabled", True)
     )
 
 
 def is_character_enabled() -> bool:
-
     return bool(
-        get_setting(
-            "character.enabled",
-            True
-        )
+        get_setting("character.enabled", True)
     )
 
 
-def is_memory_enabled() -> bool:
-
+def is_screen_awareness_enabled() -> bool:
     return bool(
-        get_setting(
-            "memory.enabled",
-            True
-        )
+        get_setting("screen_awareness.enabled", False)
     )
 
 
-def should_confirm_power_action() -> bool:
+def get_screen_awareness_settings() -> dict:
+    return get_setting("screen_awareness", {})
 
+
+def is_activity_awareness_enabled() -> bool:
     return bool(
-        get_setting(
-            "privacy.confirm_power_actions",
-            True
-        )
+        get_setting("activity_awareness.enabled", True)
     )
 
 
-def should_confirm_file_deletion() -> bool:
-
+def is_companion_enabled() -> bool:
     return bool(
-        get_setting(
-            "privacy.confirm_file_deletion",
-            True
-        )
-    )
-
-
-def should_confirm_email_sending() -> bool:
-
-    return bool(
-        get_setting(
-            "privacy.confirm_email_sending",
-            True
-        )
+        get_setting("companion.enabled", True)
     )
 
 
 # =============================================================
-# INITIALIZE SETTINGS
+# INITIALIZATION
 # =============================================================
 
+# Pre-load settings on import
 _load_settings()
-
-
-# =============================================================
-# PUBLIC API
-# =============================================================
-
-__all__ = [
-
-    # Core
-    "get_setting",
-    "set_setting",
-    "update_settings",
-    "get_all_settings",
-    "save_settings",
-
-    # Reset
-    "reset_setting",
-    "reset_category",
-    "reset_all_settings",
-
-    # Delete
-    "delete_setting",
-
-    # Listeners
-    "add_settings_listener",
-    "remove_settings_listener",
-
-    # Import / Export
-    "export_settings",
-    "import_settings",
-
-    # Backups
-    "create_settings_backup",
-    "get_available_backups",
-    "restore_backup",
-
-    # Helpers
-    "is_voice_enabled",
-    "is_character_enabled",
-    "is_memory_enabled",
-    "should_confirm_power_action",
-    "should_confirm_file_deletion",
-    "should_confirm_email_sending",
-
-    # Constants
-    "DEFAULT_SETTINGS",
-    "SETTINGS_FILE",
-]

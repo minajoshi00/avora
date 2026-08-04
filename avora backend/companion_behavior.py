@@ -23,17 +23,16 @@ Architecture:
 import math
 import random
 import time
-import traceback
 from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QThread, QPropertyAnimation, QEasingCurve, QRect
+from PySide6.QtCore import Qt, QTimer, Signal, QPoint, QThread, QPropertyAnimation, QEasingCurve
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QFrame, QGraphicsDropShadowEffect, QApplication,
     QScrollArea
 )
-from PySide6.QtGui import QColor, QFont, QTextCursor, QTextDocument, QPainter, QBrush, QPen
+from PySide6.QtGui import QColor, QFont, QPainter
 
 
 # =============================================================
@@ -702,61 +701,38 @@ class CompanionBehaviorController:
             observation = self.companion.get_last_observation()
 
         if observation:
-            session_mins = observation.get("session_duration_minutes", 0)
             idle_mins = observation.get("idle_minutes", 0)
-            user_state = observation.get("user_state")
-            if hasattr(user_state, "value"):
-                user_state = user_state.value
-            else:
-                user_state = str(user_state)
 
-            if session_mins < 5:
-                return f"{time_greeting}! Ready to crush it today? 🔥"
-
+            # Only react to being away
             if idle_mins > 15:
                 return "You disappeared 👀 everything okay?"
 
             if idle_mins > 3:
                 return "Welcome back 😄"
 
-            if user_state == "stuck":
-                return random.choice([
-                    "You look stuck bro 😅 need help?",
-                    "I see you fighting something 👀 want a hand?",
-                    "Stuck? Don't worry, I got you 🤝",
-                ])
-            elif user_state == "focused":
-                return random.choice([
-                    "You're locked in! 😤 what are you building?",
-                    "Bro, you look focused today 🔍",
-                    "Focus mode activated! Need anything?",
-                ])
-            elif user_state == "succeeding":
-                return random.choice([
-                    "YOOOOO 🔥 you're on fire!",
-                    "Things are going well! Keep it up! 💪",
-                    "I can tell you're in the zone! 🚀",
-                ])
-            elif user_state == "learning":
-                return random.choice([
-                    "Learning mode! 🧠 What are you studying?",
-                    "Brain time! Need help explaining something?",
-                ])
-            elif user_state == "frustrated":
-                return random.choice([
-                    "That looks frustrating bro 😅 Want me to help?",
-                    "Take a breath. I'm here if you need me.",
-                ])
+            # Check current activity from screen awareness
+            current_activity = observation.get("activity_type", "")
+            if hasattr(current_activity, "value"):
+                current_activity = current_activity.value
+            
+            activity_str = str(current_activity).lower()
+            
+            # Context-aware greetings based on what they're doing
+            if activity_str == "coding":
+                return f"{time_greeting} bro! 👋 Hope the coding's going well."
+            elif activity_str == "studying":
+                return f"Hey! 😊 How's the studying going?"
+            elif activity_str == "gaming":
+                return "Hey! 😄 Have fun! I'll stay out of the way."
+            elif activity_str == "working":
+                return f"{time_greeting}! How's work going?"
+            elif activity_str == "reading":
+                return f"{time_greeting}! Enjoying what you're reading?"
+            elif activity_str == "designing":
+                return f"{time_greeting}! How's the design work going?"
 
-        generic = [
-            f"{time_greeting}! 👋",
-            "Heyyy! What's up? 😄",
-            "You clicked me! 👀",
-            "Bro, what are you working on?",
-            "Need something? I'm here!",
-            "Sup! 👋",
-        ]
-        return random.choice(generic)
+        # Default greeting - simple and friendly
+        return f"{time_greeting} bro! 👋 Good to see you."
 
     # =========================================================
     # NOTIFICATIONS

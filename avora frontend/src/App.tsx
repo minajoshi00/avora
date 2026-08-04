@@ -10,7 +10,7 @@ import { FirstRunExperience } from './components/modals/FirstRunExperience';
 import { FeedbackPrompt } from './components/modals/FeedbackPrompt';
 import { UpdateNotification } from './components/modals/UpdateNotification';
 import { AdminLogin } from './pages/AdminLogin';
-import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import AdminDashboardPage from './pages/AdminDashboardPage';
 import { hasValidSession } from './lib/admin';
 import { initAnalytics } from './lib/analytics';
 import { getAnalyticsEnabled, getAnalyticsConsent } from './lib/storage';
