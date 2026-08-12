@@ -18,7 +18,11 @@ dist-ssr
 .idea
 .DS_Store
 *.suo
-*.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Environment / secrets (NEVER commit; the admin key must stay server-side)
+.env
+.env.*
+!.env.example

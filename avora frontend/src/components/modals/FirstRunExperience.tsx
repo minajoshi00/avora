@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { completeFirstRun, isFirstRunComplete } from '../../lib/storage';
-import { initAnalytics, updateAnalyticsSettings } from '../../lib/analytics';
+import { initAnalytics, updateAnalyticsSettings, trackNewUser } from '../../lib/analytics';
 import { Button } from '../ui/Button';
 
 /**
@@ -33,6 +33,7 @@ export function FirstRunExperience() {
     if (analyticsOptIn) {
       updateAnalyticsSettings(true, true);
       initAnalytics(true, true);
+      trackNewUser();
     } else {
       updateAnalyticsSettings(false, false);
       initAnalytics(false, false);

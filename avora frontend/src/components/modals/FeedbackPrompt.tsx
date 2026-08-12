@@ -9,7 +9,7 @@ import {
   dismissFeedback,
   saveFeedback 
 } from '../../lib/storage';
-import { trackEvent } from '../../lib/analytics';
+import { trackFeedback, trackEvent } from '../../lib/analytics';
 import { Button } from '../ui/Button';
 import { Star, MessageSquare, Bug, Lightbulb, X } from 'lucide-react';
 
@@ -48,12 +48,8 @@ export function FeedbackPrompt() {
     saveFeedback(rating, comments, feedbackType);
     markFeedbackPrompted();
     
-    // Track event
-    trackEvent('Feedback', {
-      rating,
-      type: feedbackType,
-      hasComments: comments.length > 0,
-    });
+    // Track event (real, server-side)
+    trackFeedback(rating, feedbackType, comments.length > 0);
 
     setSubmitted(true);
     

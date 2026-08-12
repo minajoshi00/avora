@@ -1,53 +1,42 @@
 /**
  * Admin Dashboard - Overview Section
- * 
- * Displays high-level metrics and statistics.
+ *
+ * High-level metrics. Numbers come from the analytics server; the
+ * Open Bugs count comes from real locally-stored bug reports.
  */
 
 'use client';
 
 import { motion } from 'framer-motion';
-import { 
-  Users,
-  Download,
-  MessageSquare,
-  Bug,
-  Activity,
-  Globe,
-  Monitor,
-  Clock,
-  TrendingUp,
+import {
+  Users, Download, MessageSquare, Bug, Activity, Monitor, Clock, TrendingUp, Globe,
 } from 'lucide-react';
 import { getBugReports } from '../../lib/storage';
-
-const stats = [
-  { label: 'Total Visitors', value: '12.5K', change: '+12%', icon: Users, color: 'blue' },
-  { label: 'Unique Visitors', value: '8.3K', change: '+8%', icon: Globe, color: 'purple' },
-  { label: 'Downloads', value: '3.2K', change: '+15%', icon: Download, color: 'emerald' },
-  { label: 'Active Users', value: '1.2K', change: '+5%', icon: Activity, color: 'yellow' },
-  { label: 'Feedback', value: '48', change: '+3', icon: MessageSquare, color: 'pink' },
-  { label: 'Bug Reports', value: '12', change: '-2', icon: Bug, color: 'red' },
-];
-
-const platforms = [
-  { name: 'Windows', percentage: 65, color: 'bg-blue-500' },
-  { name: 'macOS', percentage: 25, color: 'bg-purple-500' },
-  { name: 'Linux', percentage: 10, color: 'bg-emerald-500' },
-];
-
-const browsers = [
-  { name: 'Chrome', percentage: 70 },
-  { name: 'Firefox', percentage: 15 },
-  { name: 'Safari', percentage: 10 },
-  { name: 'Edge', percentage: 5 },
-];
+import { useAnalyticsSummary } from '../../hooks/useAnalyticsSummary';
+import { LoadingState, ErrorState } from './AnalyticsStates';
+import { formatCount, formatRate } from '../../lib/analytics-client';
 
 export function OverviewSection() {
   const bugReports = getBugReports();
+  const { state } = useAnalyticsSummary('30d');
+
+  if (state.status === 'loading') return <LoadingState />;
+  if (state.status === 'error') return <ErrorState message={state.message} />;
+
+  const { totals, rates, breakdowns, hasData } = state.data;
+  const providers = breakdowns.providers;
+
+  const stats = [
+    { label: 'Total Users', value: formatCount(totals.totalUsers), change: formatRate(rates.newUsers), icon: Users, color: 'blue' },
+    { label: 'Active Users (30d)', value: formatCount(totals.activeUsers), change: { text: 'live', positive: true }, icon: Activity, color: 'yellow' },
+    { label: 'Downloads', value: formatCount(totals.downloads), change: formatRate(rates.downloads), icon: Download, color: 'emerald' },
+    { label: 'Conversations', value: formatCount(totals.totalConversations), change: formatRate(rates.conversations), icon: MessageSquare, color: 'purple' },
+    { label: 'AI Requests', value: formatCount(totals.aiRequests), change: { text: 'live', positive: true }, icon: Globe, color: 'cyan' },
+    { label: 'Errors', value: formatCount(totals.errors), change: { text: 'live', positive: false }, icon: Bug, color: 'red' },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
@@ -63,7 +52,9 @@ export function OverviewSection() {
                 <div className={`p-3 rounded-xl bg-${stat.color}-500/10 border border-${stat.color}-500/20`}>
                   <Icon size={20} className={`text-${stat.color}-400`} />
                 </div>
-                <span className="text-xs text-emerald-400 font-medium">{stat.change}</span>
+                <span className={`text-xs font-medium ${stat.change.positive ? 'text-emerald-400' : 'text-red-300'}`}>
+                  {stat.change.text}
+                </span>
               </div>
               <div>
                 <p className="text-2xl font-bold text-white mb-1">{stat.value}</p>
@@ -74,109 +65,79 @@ export function OverviewSection() {
         })}
       </div>
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Operating Systems */}
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
           <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
-            <Monitor size={14} />
-            Operating Systems
+            <Monitor size={14} /> AI Provider Usage
           </h3>
-          <div className="space-y-3">
-            {platforms.map((platform) => (
-              <div key={platform.name} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-400">{platform.name}</span>
-                  <span className="text-gray-500">{platform.percentage}%</span>
+          {providers.length ? (
+            <div className="space-y-3">
+              {providers.map((p) => (
+                <div key={p.name} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400 capitalize">{p.name}</span>
+                    <span className="text-gray-500">{p.percentage}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${p.percentage}%` }}
+                      transition={{ duration: 1, delay: 0.2 }} className="h-full rounded-full bg-blue-500" />
+                  </div>
                 </div>
-                <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${platform.percentage}%` }}
-                    transition={{ duration: 1, delay: 0.2 }}
-                    className={`h-full rounded-full ${platform.color}`}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">No AI requests recorded.</p>
+          )}
         </div>
 
-        {/* Browsers */}
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
           <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
-            <Globe size={14} />
-            Browsers
+            <TrendingUp size={14} /> Engagement
           </h3>
-          <div className="space-y-3">
-            {browsers.map((browser) => (
-              <div key={browser.name} className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">{browser.name}</span>
-                <span className="text-xs text-gray-500">{browser.percentage}%</span>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 gap-3">
+            <Mini label="Messages" value={formatCount(totals.messagesSent)} />
+            <Mini label="Missions made" value={formatCount(totals.missionsCreated)} />
+            <Mini label="Missions done" value={formatCount(totals.missionsCompleted)} />
+            <Mini label="Tasks done" value={formatCount(totals.tasksCompleted)} />
           </div>
         </div>
       </div>
 
-      {/* Recent Activity */}
-      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-        <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
-          <Clock size={14} />
-          Latest Activity
-        </h3>
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-            <div className="w-2 h-2 rounded-full bg-blue-400" />
-            <div className="flex-1">
-              <p className="text-xs text-white">New download from Windows</p>
-              <p className="text-[10px] text-gray-500">2 minutes ago</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-            <div className="flex-1">
-              <p className="text-xs text-white">Bug report submitted</p>
-              <p className="text-[10px] text-gray-500">15 minutes ago</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-            <div className="w-2 h-2 rounded-full bg-purple-400" />
-            <div className="flex-1">
-              <p className="text-xs text-white">Feature request received</p>
-              <p className="text-[10px] text-gray-500">1 hour ago</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
           <div className="flex items-center gap-3 mb-2">
-            <TrendingUp size={16} className="text-blue-400" />
-            <p className="text-xs text-gray-500">Conversion Rate</p>
+            <Bug size={16} className="text-red-400" />
+            <p className="text-xs text-gray-500">Open Bugs (local reports)</p>
           </div>
-          <p className="text-2xl font-bold text-white">24.5%</p>
-          <p className="text-xs text-emerald-400 mt-1">+3.2% from last week</p>
+          <p className="text-2xl font-bold text-white">{bugReports.length}</p>
+          <p className="text-xs text-gray-500 mt-1">From user-submitted reports</p>
+        </div>
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Clock size={16} className="text-blue-400" />
+            <p className="text-xs text-gray-500">Feedback</p>
+          </div>
+          <p className="text-2xl font-bold text-white">{formatCount(totals.feedbackTotal)}</p>
+          <p className="text-xs text-gray-500 mt-1">Submitted ratings/notes</p>
         </div>
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
           <div className="flex items-center gap-3 mb-2">
             <Activity size={16} className="text-purple-400" />
-            <p className="text-xs text-gray-500">Avg Session Time</p>
+            <p className="text-xs text-gray-500">Total Events</p>
           </div>
-          <p className="text-2xl font-bold text-white">4m 32s</p>
-          <p className="text-xs text-emerald-400 mt-1">+12s from last week</p>
-        </div>
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <Bug size={16} className="text-red-400" />
-            <p className="text-xs text-gray-500">Open Bugs</p>
-          </div>
-          <p className="text-2xl font-bold text-white">{bugReports.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Requires attention</p>
+          <p className="text-2xl font-bold text-white">{formatCount(totals.totalEvents)}</p>
+          <p className="text-xs text-gray-500 mt-1">{hasData ? 'Real tracked events' : 'No data yet'}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Mini({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+      <p className="text-lg font-bold text-white">{value}</p>
+      <p className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</p>
     </div>
   );
 }

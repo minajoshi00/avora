@@ -407,14 +407,18 @@ def generate_qss() -> str:
     }}
 
     #Logo {{
-        font-size: 23px;
-        font-weight: bold;
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
         color: {tx["primary"]};
+        padding: 4px 0 0 0;
     }}
 
     #SubText {{
         color: {tx["muted"]};
-        font-size: 12px;
+        font-size: 11px;
+        letter-spacing: 1.3px;
+        text-transform: uppercase;
     }}
 
     /* =================================================
@@ -445,17 +449,29 @@ def generate_qss() -> str:
     #NewChatButton,
     #SettingsButton {{
         background-color: {s["hover"]};
-        border: none;
+        border: 1px solid rgba(255,255,255,0.04);
         border-radius: 12px;
-        padding: 13px;
+        padding: 12px 14px;
         color: {tx["primary"]};
         font-size: 14px;
         font-weight: 600;
     }}
 
+    #NewChatButton {{
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+            stop:0 #8B7AFF, stop:1 #6C63FF);
+        border: none;
+        color: white;
+    }}
+
     #NewChatButton:hover,
     #SettingsButton:hover {{
         background-color: {s["pressed"]};
+    }}
+
+    #NewChatButton:hover {{
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+            stop:0 #9E91FF, stop:1 #817AFF);
     }}
 
     #NewChatButton:pressed,
@@ -493,19 +509,20 @@ def generate_qss() -> str:
     ================================================= */
 
     #Header {{
-        background-color: {b["secondary"]};
-        border-bottom: 1px solid {br["subtle"]};
+        background-color: transparent;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
     }}
 
     #HeaderTitle {{
         font-size: 18px;
-        font-weight: bold;
+        font-weight: 700;
         color: {tx["primary"]};
     }}
 
     #HeaderStatus {{
         color: {sem["success"]};
         font-size: 12px;
+        font-weight: 600;
     }}
 
     /* =================================================
@@ -519,6 +536,7 @@ def generate_qss() -> str:
 
     #MessageArea {{
         background-color: transparent;
+        padding: 6px 0 0 0;
     }}
 
     /* =================================================
@@ -527,18 +545,20 @@ def generate_qss() -> str:
 
     #UserBubble {{
         background-color: {ch["user_bubble"]};
-        border-radius: 16px;
+        border-radius: 18px;
         padding: 12px 16px;
         font-size: 14px;
+        line-height: 1.5;
         color: {ch["user_text"]};
     }}
 
     #AIBubble {{
         background-color: {ch["ai_bubble"]};
-        border: 1px solid {ch["ai_border"]};
-        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.04);
+        border-radius: 18px;
         padding: 12px 16px;
         font-size: 14px;
+        line-height: 1.6;
         color: {ch["ai_text"]};
     }}
 
@@ -560,12 +580,12 @@ def generate_qss() -> str:
 
     #InputContainer {{
         background-color: {s["input"]};
-        border: 1px solid {br["default"]};
-        border-radius: 18px;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 20px;
     }}
 
     #InputContainer:focus-within {{
-        border: 1px solid {a["default"]};
+        border: 1px solid rgba(139,122,255,0.7);
         background-color: {s["hover"]};
     }}
 
@@ -574,9 +594,13 @@ def generate_qss() -> str:
         border: none;
         color: {tx["primary"]};
         font-size: 15px;
-        padding: 12px;
+        padding: 12px 10px;
         selection-background-color: {a["muted"]};
         selection-color: {tx["primary"]};
+    }}
+
+    #InputBox::placeholder {{
+        color: {tx["muted"]};
     }}
 
     #InputBox:disabled {{
@@ -588,20 +612,23 @@ def generate_qss() -> str:
     ================================================= */
 
     #SendButton {{
-        background-color: {bt["primary_bg"]};
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 #8B7AFF, stop:1 #5BC0FF);
         border: none;
-        border-radius: 13px;
+        border-radius: 14px;
         color: {bt["primary_text"]};
-        font-size: 20px;
-        font-weight: bold;
+        font-size: 18px;
+        font-weight: 700;
     }}
 
     #SendButton:hover {{
-        background-color: {bt["primary_hover"]};
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 #9E91FF, stop:1 #75C9FF);
     }}
 
     #SendButton:pressed {{
-        background-color: {bt["primary_pressed"]};
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 #7567F0, stop:1 #3FA8E8);
     }}
 
     #SendButton:disabled {{

@@ -455,7 +455,16 @@ class MainWindow(QWidget):
 
     def animate_neural_background(self):
         """Animate neural nodes and repaint."""
+        if self.is_closing:
+            return
+
         if not self.neural_canvas or not self.neural_nodes:
+            return
+
+        if self.neural_canvas.isHidden() or not self.neural_canvas.isVisible():
+            return
+
+        if self.neural_canvas.paintEngine() is None:
             return
 
         w, h = self.neural_canvas.width(), self.neural_canvas.height()
@@ -495,10 +504,23 @@ class MainWindow(QWidget):
         """Override paintEvent to draw neural network."""
         super().paintEvent(event)
 
+        if self.is_closing:
+            return
+
         if not self.neural_canvas or not self.neural_nodes:
             return
 
-        painter = QPainter(self.neural_canvas)
+        if self.neural_canvas.isHidden() or not self.neural_canvas.isVisible():
+            return
+
+        if self.neural_canvas.paintEngine() is None:
+            return
+
+        try:
+            painter = QPainter(self.neural_canvas)
+        except Exception:
+            return
+
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Get theme colors
@@ -584,14 +606,14 @@ class MainWindow(QWidget):
         )
 
         self.sidebar.setFixedWidth(
-            270
+            290
         )
 
         self.apply_shadow(
             self.sidebar,
-            blur=30,
+            blur=24,
             offset=0,
-            alpha=140,
+            alpha=90,
         )
 
         sidebar_layout = QVBoxLayout(
@@ -599,14 +621,14 @@ class MainWindow(QWidget):
         )
 
         sidebar_layout.setContentsMargins(
-            20,
-            25,
-            20,
-            20
+            18,
+            18,
+            18,
+            16
         )
 
         sidebar_layout.setSpacing(
-            10
+            8
         )
 
         # ====================================================
@@ -781,133 +803,7 @@ class MainWindow(QWidget):
             15
         )
 
-        # ====================================================
-        # PROFILE CARD
-        # ====================================================
-
-        profile = QFrame()
-
-        profile.setObjectName(
-            "ProfileCard"
-        )
-
-        profile.setStyleSheet("""
-            QFrame#ProfileCard {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #1E1E2D, stop:1 #252538);
-                border-radius: 18px;
-                border: 1px solid #303044;
-            }
-        """)
-
-        profile_layout = QVBoxLayout(
-            profile
-        )
-
-        profile_layout.setContentsMargins(
-            18,
-            18,
-            18,
-            18
-        )
-
-        avatar = QLabel(
-            "✦"
-        )
-
-        avatar.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        avatar.setFont(
-            QFont(
-                "Segoe UI",
-                36,
-                QFont.Weight.Bold
-            )
-        )
-
-        avatar.setStyleSheet("""
-            color: #8B7AFF;
-            background: transparent;
-            padding: 5px;
-        """)
-
-        profile_name = QLabel(
-            "AVORA"
-        )
-
-        profile_name.setObjectName(
-            "ProfileName"
-        )
-
-        profile_name.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        profile_name.setStyleSheet("""
-            font-size: 16px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            padding: 2px 0;
-        """)
-
-        online = QLabel(
-            "● Active"
-        )
-
-        online.setObjectName(
-            "Online"
-        )
-
-        online.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        online.setStyleSheet("""
-            color: #34D399;
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.5px;
-        """)
-
-        profile_layout.addWidget(
-            avatar
-        )
-
-        profile_layout.addWidget(
-            profile_name
-        )
-
-        profile_layout.addWidget(
-            online
-        )
-
-        sidebar_layout.addWidget(
-            profile
-        )
-
         sidebar_layout.addStretch()
-
-        # ====================================================
-        # FOOTER
-        # ====================================================
-
-        footer = QLabel(
-            "Built with Python 🐍"
-        )
-
-        footer.setObjectName(
-            "SubText"
-        )
-
-        footer.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        sidebar_layout.addWidget(
-            footer
-        )
 
         # ====================================================
         # RIGHT SIDE
@@ -1028,14 +924,14 @@ class MainWindow(QWidget):
         )
 
         self.message_layout.setContentsMargins(
-            30,
-            25,
-            30,
-            25
+            36,
+            24,
+            36,
+            24
         )
 
         self.message_layout.setSpacing(
-            15
+            18
         )
 
         self.message_layout.addStretch()
@@ -1056,7 +952,7 @@ class MainWindow(QWidget):
         input_outer = QFrame()
 
         input_outer.setFixedHeight(
-            85
+            96
         )
 
         input_layout = QHBoxLayout(
@@ -1064,10 +960,10 @@ class MainWindow(QWidget):
         )
 
         input_layout.setContentsMargins(
-            25,
+            18,
             12,
-            25,
-            15
+            18,
+            18
         )
 
         self.input_container = QFrame()
@@ -1088,10 +984,10 @@ class MainWindow(QWidget):
         )
 
         input_container_layout.setContentsMargins(
-            8,
-            5,
-            8,
-            5
+            10,
+            6,
+            10,
+            6
         )
 
         self.user_input = QLineEdit()
@@ -1318,6 +1214,10 @@ class MainWindow(QWidget):
             self.character = None
 
             return
+
+        self.character.setParent(
+            self.sidebar
+        )
 
         self.character.show()
 
@@ -2204,9 +2104,9 @@ class MainWindow(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
 
-        # Use 90-92% of available chat width instead of fixed 560px
+        # Keep the user reply comfortably wide without dominating the chat area.
         chat_width = self.chat_area.width() if self.chat_area else 800
-        max_width = max(300, int(chat_width * 0.92))
+        max_width = max(260, int(chat_width * 0.72))
         bubble.setMaximumWidth(
             max_width
         )
@@ -2255,9 +2155,9 @@ class MainWindow(QWidget):
         browser = QTextBrowser()
         browser.setObjectName("AIBubble")
         
-        # Use 92-95% of available chat width instead of fixed 680px
+        # Let AI responses feel spacious but still readable within the conversation area.
         chat_width = self.chat_area.width() if self.chat_area else 800
-        max_width = max(400, int(chat_width * 0.95))
+        max_width = max(360, int(chat_width * 0.82))
         browser.setMaximumWidth(max_width)
         browser.setMinimumHeight(40)
         browser.setSizePolicy(
@@ -2338,10 +2238,10 @@ class MainWindow(QWidget):
                 for j in range(layout.count()):
                     widget = layout.itemAt(j).widget()
                     if widget and widget.objectName() == "UserBubble":
-                        max_width = max(300, int(chat_width * 0.92))
+                        max_width = max(260, int(chat_width * 0.72))
                         widget.setMaximumWidth(max_width)
                     elif widget and widget.objectName() == "AIBubble":
-                        max_width = max(400, int(chat_width * 0.95))
+                        max_width = max(360, int(chat_width * 0.82))
                         widget.setMaximumWidth(max_width)
                         # Re-adjust height with new width
                         QTimer.singleShot(0, lambda b=widget, w=max_width: self._adjust_browser_height(b, w))
@@ -3830,67 +3730,24 @@ class MainWindow(QWidget):
 
             return
 
-        if self.compact_character_mode:
-
-            self.character.set_scale_factor(
-                0.62
+        if self.character.parent() is not self.sidebar:
+            self.character.setParent(
+                self.sidebar
             )
-
-            screen = self.screen()
-
-            if screen is None:
-
-                screen = QApplication.primaryScreen()
-
-            geometry = screen.availableGeometry()
-
-            x = geometry.right() - self.character.width() - 24
-            y = geometry.bottom() - self.character.height() - 24
-
-            self.character.move(
-                max(geometry.left(), x),
-                max(geometry.top(), y),
-            )
-
-            self.character.raise_()
-
-            return
 
         self.character.set_scale_factor(
             self.get_character_scale_factor()
         )
 
-        sidebar_width = self.sidebar.width()
-
-        available_width = (
-            self.width()
-            - sidebar_width
-        )
-
-        x = (
-
-            sidebar_width
-            + (
-                available_width
-                - self.character.width()
-            ) // 2
-        )
-
-        y = (
-
-            self.height()
-            - self.character.height()
-            - 105
-        )
-
+        sidebar_rect = self.sidebar.contentsRect()
+        margin = 18
         x = max(
-            sidebar_width,
-            x
-        )
-
-        y = max(
             0,
-            y
+            (sidebar_rect.width() - self.character.width()) // 2,
+        )
+        y = max(
+            margin,
+            sidebar_rect.bottom() - self.character.height() - margin,
         )
 
         self.character.move(
@@ -4044,12 +3901,24 @@ class MainWindow(QWidget):
                 self.neural_timer.stop()
             except Exception:
                 pass
+            self.neural_timer = None
 
         if self.companion_timer is not None:
             try:
                 self.companion_timer.stop()
             except Exception:
                 pass
+
+        # ----------------------------------------------------
+        # CLEANUP NEURAL CANVAS
+        # ----------------------------------------------------
+
+        if self.neural_canvas is not None:
+            try:
+                self.neural_canvas.setVisible(False)
+            except Exception:
+                pass
+            self.neural_canvas = None
 
         # ----------------------------------------------------
         # STOP SCREEN AWARENESS

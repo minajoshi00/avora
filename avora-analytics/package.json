@@ -1,0 +1,21 @@
+{
+  "name": "avora-analytics",
+  "version": "1.0.0",
+  "description": "AVORA real production analytics server (Express + SQLite)",
+  "type": "module",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "seed": "node scripts/seed.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "better-sqlite3": "^11.3.0"
+  },
+  "allowScripts": {}
+}

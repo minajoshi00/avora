@@ -1,0 +1,41 @@
+# AVORA Analytics — Render deployment manifest
+#
+# This deploys avora-analytics as a persistent Node web service.
+# SQLite lives on a persistent disk so data survives restarts/deploys.
+# The admin key stays server-side and is set via Render environment variables.
+#
+# Build & start:
+#   build:  npm install
+#   start:  npm start
+#
+# IMPORTANT (production safety):
+#   - Do NOT enable AVORA_ANALYTICS_SEED in production.
+#   - Set AVORA_ANALYTICS_ADMIN_KEY (server-only, never shared with the frontend).
+#   - Set AVORA_ANALYTICS_VIEW_KEY to the SAME value as VITE_ANALYTICS_VIEW_KEY
+#     in the frontend build — this is the only analytics secret the browser holds.
+
+services:
+  - type: web
+    name: avora-analytics
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: AVORA_ANALYTICS_ADMIN_KEY
+        sync: false   # set in Render dashboard (secret, never committed)
+      - key: AVORA_ANALYTICS_VIEW_KEY
+        sync: false   # set in Render dashboard (matches VITE_ANALYTICS_VIEW_KEY)
+      - key: AVORA_ANALYTICS_SEED
+        value: "false"
+    disk:
+      name: analytics-data
+      mountPath: /opt/render/project/src/avora-analytics/data
+      sizeGB: 1

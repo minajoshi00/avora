@@ -12,7 +12,7 @@ import { UpdateNotification } from './components/modals/UpdateNotification';
 import { AdminLogin } from './pages/AdminLogin';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import { hasValidSession } from './lib/admin';
-import { initAnalytics } from './lib/analytics';
+import { initAnalytics, trackPageView } from './lib/analytics';
 import { getAnalyticsEnabled, getAnalyticsConsent } from './lib/storage';
 
 export default function App() {
@@ -34,7 +34,15 @@ export default function App() {
       const analyticsEnabled = getAnalyticsEnabled();
       const consent = getAnalyticsConsent();
       initAnalytics(analyticsEnabled, consent);
+      trackPageView(window.location.hash || window.location.pathname);
     }
+  }, []);
+
+  // Track page views on hash/route changes (real events, consent-gated).
+  useEffect(() => {
+    const onRoute = () => trackPageView(window.location.hash || window.location.pathname);
+    window.addEventListener('hashchange', onRoute);
+    return () => window.removeEventListener('hashchange', onRoute);
   }, []);
 
   const isAdminRoute = currentPath === '#/admin' || currentPath.startsWith('#/admin/');

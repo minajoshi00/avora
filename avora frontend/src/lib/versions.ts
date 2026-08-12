@@ -78,14 +78,14 @@ export const versions: Version[] = [
     platforms: [
       {
         platform: 'windows',
-        url: 'https://github.com/minajoshi00/avora/releases',
+        url: 'https://github.com/minajoshi00/avora/releases/download/v1.0.0/AVORA-Setup.exe',
         size: '245 MB',
         type: 'installer',
         checksum: 'SHA256: a3f5b8c1d2e4f7...',
       },
       {
         platform: 'windows',
-        url: 'https://github.com/minajoshi00/avora/releases',
+        url: 'https://github.com/minajoshi00/avora/releases/download/v1.0.0/AVORA-Setup.exe',
         size: '238 MB',
         type: 'portable',
       },

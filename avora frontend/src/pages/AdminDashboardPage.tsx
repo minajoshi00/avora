@@ -12,44 +12,20 @@ import { BugReportsSection } from '../components/admin/BugReportsSection';
 import { DownloadAnalyticsSection } from '../components/admin/DownloadAnalyticsSection';
 import { SystemHealthSection } from '../components/admin/SystemHealthSection';
 import { ChangelogManager } from '../components/admin/ChangelogManager';
-import { UpdateManagement } from '../components/admin/UpdateManagement';
 import { SearchSection } from '../components/admin/SearchSection';
 import {
-  LayoutDashboard,
-  Users,
-  MessageSquare,
-  Lightbulb,
-  Bug,
-  Download,
-  Activity,
-  FileText,
-  RefreshCw,
-  Search,
-  LogOut,
-  ChevronRight,
-  BarChart3,
-  User,
-  Shield,
+  LayoutDashboard, Users, MessageSquare, Lightbulb, Bug, Download, Activity,
+  RefreshCw, Search, LogOut, ChevronRight, BarChart3, User, Shield,
   History,
 } from 'lucide-react';
+import { useAnalyticsSummary } from '../hooks/useAnalyticsSummary';
+import { LoadingState, ErrorState, EmptyState } from '../components/admin/AnalyticsStates';
+import { formatCount, formatRate, type Range } from '../lib/analytics-client';
 
 type Section =
-  | 'overview'
-  | 'users'
-  | 'feedback'
-  | 'features'
-  | 'bugs'
-  | 'downloads'
-  | 'health'
-  | 'changelog'
-  | 'updates'
-  | 'search'
-  | 'analytics'
-  | 'visitors'
-  | 'releases'
-  | 'system'
-  | 'logs'
-  | 'charts';
+  | 'overview' | 'users' | 'feedback' | 'features' | 'bugs'
+  | 'downloads' | 'health' | 'changelog' | 'updates' | 'search'
+  | 'analytics' | 'visitors';
 
 const sections: { id: Section; label: string; icon: any }[] = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
@@ -59,7 +35,6 @@ const sections: { id: Section; label: string; icon: any }[] = [
   { id: 'feedback', label: '💬 Feedback', icon: MessageSquare },
   { id: 'bugs', label: '🐞 Bug Reports', icon: Bug },
   { id: 'features', label: '💡 Feature Requests', icon: Lightbulb },
-  { id: 'releases', label: '📦 Releases', icon: FileText },
   { id: 'health', label: '⚙ System Status', icon: Shield },
   { id: 'changelog', label: '📜 Logs', icon: History },
   { id: 'updates', label: '📈 Charts', icon: RefreshCw },
@@ -75,13 +50,9 @@ const sectionLabels: Record<Section, string> = {
   feedback: 'Feedback',
   features: 'Feature Requests',
   bugs: 'Bug Reports',
-  releases: 'Releases',
   health: 'System Status',
-  system: 'System',
   changelog: 'Logs',
-  logs: 'Logs',
   updates: 'Charts',
-  charts: 'Charts',
   search: 'Recent Activity',
 };
 
@@ -95,15 +66,11 @@ export default function AdminDashboardPage() {
       const hash = window.location.hash.replace('#/admin/', '');
       if (hash) {
         const section = hash as Section;
-        if (sections.find(s => s.id === section)) {
-          setActiveSection(section);
-        }
+        if (sections.find((s) => s.id === section)) setActiveSection(section);
       }
     };
-
     window.addEventListener('hashchange', handleHashChange);
     handleHashChange();
-
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
@@ -118,9 +85,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      trackEvent('admin_navigate', { section: activeSection });
-    }
+    if (isAuthenticated) trackEvent('admin_navigate', { props: { section: activeSection } });
   }, [activeSection, isAuthenticated]);
 
   const handleLogout = () => {
@@ -133,7 +98,7 @@ export default function AdminDashboardPage() {
   const navigateTo = (section: Section) => {
     setActiveSection(section);
     window.location.hash = `#/admin/${section}`;
-    trackEvent('admin_navigate', { section });
+    trackEvent('admin_navigate', { props: { section } });
   };
 
   if (isLoading) {
@@ -143,10 +108,7 @@ export default function AdminDashboardPage() {
       </div>
     );
   }
-
-  if (!isAuthenticated) {
-    return null;
-  }
+  if (!isAuthenticated) return null;
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] flex">
@@ -167,7 +129,6 @@ export default function AdminDashboardPage() {
           {sections.map((section) => {
             const Icon = section.icon;
             const isActive = activeSection === section.id;
-
             return (
               <button
                 key={section.id}
@@ -201,16 +162,9 @@ export default function AdminDashboardPage() {
         <header className="sticky top-0 z-10 bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/[0.08] px-8 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">
-                {sectionLabels[activeSection] || 'Dashboard'}
-              </h2>
+              <h2 className="text-xl font-bold text-white">{sectionLabels[activeSection] || 'Dashboard'}</h2>
               <p className="text-xs text-gray-500 mt-1">
-                {new Date().toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -237,260 +191,174 @@ export default function AdminDashboardPage() {
 
 function renderSection(section: Section) {
   switch (section) {
-    case 'overview':
-      return <OverviewSection />;
-    case 'users':
-      return <UserAnalyticsSection />;
-    case 'feedback':
-      return <FeedbackCenter />;
-    case 'features':
-      return <FeatureRequestsSection />;
-    case 'bugs':
-      return <BugReportsSection />;
-    case 'downloads':
-      return <DownloadAnalyticsSection />;
-    case 'health':
-      return <SystemHealthSection />;
-    case 'changelog':
-      return <ChangelogManager />;
-    case 'updates':
-      return <UpdateManagement />;
-    case 'search':
-      return <SearchSection />;
-    case 'analytics':
-      return <AnalyticsSection />;
-    case 'visitors':
-      return <VisitorsSection />;
-    case 'releases':
-      return <ReleasesSection />;
-    case 'system':
-      return <SystemStatusSection />;
-    case 'logs':
-      return <LogsSection />;
-    case 'charts':
-      return <ChartsSection />;
-    default:
-      return <OverviewSection />;
+    case 'overview': return <OverviewSection />;
+    case 'users': return <UserAnalyticsSection />;
+    case 'feedback': return <FeedbackCenter />;
+    case 'features': return <FeatureRequestsSection />;
+    case 'bugs': return <BugReportsSection />;
+    case 'downloads': return <DownloadAnalyticsSection />;
+    case 'health': return <SystemHealthSection />;
+    case 'changelog': return <ChangelogManager />;
+    case 'updates': return <ChartsSection />;
+    case 'search': return <SearchSection />;
+    case 'analytics': return <AnalyticsSection />;
+    case 'visitors': return <VisitorsSection />;
+    default: return <OverviewSection />;
   }
 }
 
 function AnalyticsSection() {
+  const [range, setRange] = useState<Range>('7d');
+  const { state } = useAnalyticsSummary(range);
+  const ranges: { id: Range; label: string }[] = [
+    { id: 'today', label: 'Today' }, { id: '7d', label: '7 Days' },
+    { id: '30d', label: '30 Days' }, { id: '90d', label: '90 Days' },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-              <Users size={16} className="text-blue-400" />
-            </div>
-            <p className="text-xs text-gray-500">Total Visitors</p>
-          </div>
-          <p className="text-2xl font-bold text-white">12.5K</p>
-          <p className="text-xs text-emerald-400 mt-1">+12% from last month</p>
-        </div>
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
-              <BarChart3 size={16} className="text-purple-400" />
-            </div>
-            <p className="text-xs text-gray-500">Page Views</p>
-          </div>
-          <p className="text-2xl font-bold text-white">45.2K</p>
-          <p className="text-xs text-emerald-400 mt-1">+8.5% from last month</p>
-        </div>
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <Activity size={16} className="text-emerald-400" />
-            </div>
-            <p className="text-xs text-gray-500">Bounce Rate</p>
-          </div>
-          <p className="text-2xl font-bold text-white">32.4%</p>
-          <p className="text-xs text-red-300 mt-1">-2.1% from last month</p>
-        </div>
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
-              <Shield size={16} className="text-cyan-400" />
-            </div>
-            <p className="text-xs text-gray-500">Avg Session</p>
-          </div>
-          <p className="text-2xl font-bold text-white">4m 32s</p>
-          <p className="text-xs text-emerald-400 mt-1">+12s from last month</p>
-        </div>
+      <div className="flex items-center gap-2">
+        {ranges.map((r) => (
+          <button key={r.id} onClick={() => setRange(r.id)}
+            className={`px-4 py-2 rounded-lg text-sm transition-all ${
+              range === r.id ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.04] border border-transparent'}`}>
+            {r.label}
+          </button>
+        ))}
       </div>
+
+      {state.status === 'loading' && <LoadingState />}
+      {state.status === 'error' && <ErrorState message={state.message} />}
+      {state.status === 'ready' && (
+        <>
+          {!state.data.hasData ? <EmptyState label="No analytics data yet" /> : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card icon={Users} color="blue" label="Total Visitors" value={formatCount(state.data.totals.totalUsers)} delta={formatRate(state.data.rates.newUsers)} />
+              <Card icon={BarChart3} color="purple" label="AI Requests" value={formatCount(state.data.totals.aiRequests)} />
+              <Card icon={Activity} color="emerald" label="Errors" value={formatCount(state.data.totals.errors)} />
+              <Card icon={Shield} color="cyan" label="App Launches" value={formatCount(state.data.totals.appLaunches)} />
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
 function VisitorsSection() {
+  const { state } = useAnalyticsSummary('30d');
+  if (state.status === 'loading') return <LoadingState />;
+  if (state.status === 'error') return <ErrorState message={state.message} />;
+
+  const countries = state.data.breakdowns.countries;
+  const platforms = state.data.breakdowns.platforms;
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
-            <User size={14} />
-            Visitor Countries
-          </h3>
-          <div className="space-y-3">
-            {[
-              { name: 'United States', percentage: 36.2, color: 'bg-blue-500' },
-              { name: 'United Kingdom', percentage: 18.7, color: 'bg-purple-500' },
-              { name: 'Germany', percentage: 15.1, color: 'bg-emerald-500' },
-              { name: 'Canada', percentage: 9.8, color: 'bg-cyan-500' },
-              { name: 'France', percentage: 7.8, color: 'bg-pink-500' },
-            ].map((country) => (
-              <div key={country.name} className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">{country.name}</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                    <div className={`h-full rounded-full ${country.color}`} style={{ width: `${country.percentage}%` }} />
-                  </div>
-                  <span className="text-xs text-gray-500 w-12 text-right">{country.percentage}%</span>
+          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2"><User size={14} /> Visitor Countries</h3>
+          {countries.length ? countries.map((c) => (
+            <div key={c.name} className="flex items-center justify-between py-1">
+              <span className="text-xs text-gray-400">{c.name}</span>
+              <div className="flex items-center gap-2">
+                <div className="w-24 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div className="h-full rounded-full bg-blue-500" style={{ width: `${c.percentage}%` }} />
                 </div>
+                <span className="text-xs text-gray-500 w-12 text-right">{c.percentage}%</span>
               </div>
-            ))}
-          </div>
+            </div>
+          )) : <p className="text-xs text-gray-500">No country data recorded.</p>}
         </div>
 
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
-            <Activity size={14} />
-            Device Types
-          </h3>
-          <div className="space-y-3">
-            {[
-              { name: 'Desktop', percentage: 68, color: 'bg-blue-500' },
-              { name: 'Mobile', percentage: 24, color: 'bg-purple-500' },
-              { name: 'Tablet', percentage: 8, color: 'bg-emerald-500' },
-            ].map((device) => (
-              <div key={device.name} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                <span className="text-sm text-gray-300">{device.name}</span>
-                <span className="text-sm font-medium text-white">{device.percentage}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ReleasesSection() {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-bold text-white">Recent Releases</h3>
-      <div className="space-y-4">
-        {[
-          { version: 'v1.0.0', date: '2026-07-31', changes: 'Initial stable release with full admin dashboard' },
-          { version: 'v0.9.5', date: '2026-07-28', changes: 'Performance improvements and bug fixes' },
-          { version: 'v0.9.0', date: '2026-07-25', changes: 'Added analytics and visitor tracking' },
-        ].map((release) => (
-          <div key={release.version} className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.08]">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold text-blue-400">{release.version}</span>
-              <span className="text-xs text-gray-500">{release.date}</span>
+          <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2"><Activity size={14} /> Platforms</h3>
+          {platforms.length ? platforms.map((p) => (
+            <div key={p.name} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] mb-2">
+              <span className="text-sm text-gray-300 capitalize">{p.name}</span>
+              <span className="text-sm font-medium text-white">{p.percentage}%</span>
             </div>
-            <p className="text-sm text-gray-400">{release.changes}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SystemStatusSection() {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-bold text-white mb-4">System Status</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-3 h-3 rounded-full bg-emerald-400" />
-            <span className="text-sm font-bold text-white">AI Services</span>
-          </div>
-          <p className="text-xs text-gray-500">All systems operational</p>
+          )) : <p className="text-xs text-gray-500">No platform data recorded.</p>}
         </div>
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-3 h-3 rounded-full bg-emerald-400" />
-            <span className="text-sm font-bold text-white">Database</span>
-          </div>
-          <p className="text-xs text-gray-500">Connection stable</p>
-        </div>
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-3 h-3 rounded-full bg-emerald-400" />
-            <span className="text-sm font-bold text-white">Storage</span>
-          </div>
-          <p className="text-xs text-gray-500">85% capacity used</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LogsSection() {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-bold text-white mb-4">Recent Activity</h3>
-      <div className="space-y-3">
-        {[
-          { time: '2 minutes ago', action: 'New download from Windows 11' },
-          { time: '15 minutes ago', action: 'Bug report submitted by user' },
-          { time: '1 hour ago', action: 'Feature request received' },
-          { time: '2 hours ago', action: 'Admin login successful' },
-        ].map((log, index) => (
-          <div key={index} className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-            <div className="w-2 h-2 rounded-full bg-blue-400" />
-            <div className="flex-1">
-              <p className="text-sm text-gray-300">{log.action}</p>
-              <p className="text-xs text-gray-500">{log.time}</p>
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );
 }
 
 function ChartsSection() {
+  const { state } = useAnalyticsSummary('30d');
+  if (state.status === 'loading') return <LoadingState />;
+  if (state.status === 'error') return <ErrorState message={state.message} />;
+
+  const { series, totals, rates, hasData } = state.data;
+
   return (
     <div className="space-y-6">
       <h3 className="text-lg font-bold text-white mb-4">Analytics Charts</h3>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <h4 className="text-sm font-semibold text-gray-300 mb-4">Traffic Over Time</h4>
-          <div className="h-48 flex items-end justify-between gap-2">
-            {[
-              { day: 'Mon', value: 45 },
-              { day: 'Tue', value: 52 },
-              { day: 'Wed', value: 38 },
-              { day: 'Thu', value: 61 },
-              { day: 'Fri', value: 72 },
-              { day: 'Sat', value: 48 },
-              { day: 'Sun', value: 55 },
-            ].map((bar) => (
-              <div key={bar.day} className="flex-1 flex flex-col items-center">
-                <div className="w-8 h-32 rounded-t bg-gradient-to-t from-blue-500 to-purple-500" style={{ height: `${bar.value}%` }} />
-                <span className="text-xs text-gray-500 mt-2">{bar.day}</span>
-              </div>
-            ))}
+      {!hasData ? <EmptyState label="No analytics data yet" /> : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
+            <h4 className="text-sm font-semibold text-gray-300 mb-4">Traffic Over Time (pageviews)</h4>
+            <MiniBars labels={series.labels} values={series.pageviews} />
           </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
-          <h4 className="text-sm font-semibold text-gray-300 mb-4">User Growth</h4>
-          <div className="h-48 flex items-center justify-center">
-            <div className="w-64 h-64 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-3xl font-bold text-white">24.5%</p>
-                <p className="text-xs text-gray-500">Growth Rate</p>
-              </div>
+          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
+            <h4 className="text-sm font-semibold text-gray-300 mb-4">Growth (real, computed)</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <Growth label="Downloads" rate={rates.downloads} />
+              <Growth label="New Users" rate={rates.newUsers} />
+              <Growth label="Conversations" rate={rates.conversations} />
+              <Growth label="Pageviews" rate={rates.pageviews} />
             </div>
+            <p className="text-xs text-gray-600 mt-4">
+              {totals.totalEvents} total real events tracked.
+            </p>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function Card({ icon: Icon, color, label, value, delta }: { icon: any; color: string; label: string; value: string; delta?: { text: string; positive: boolean } }) {
+  return (
+    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`p-2 rounded-lg bg-${color}-500/10 border border-${color}-500/20`}>
+          <Icon size={16} className={`text-${color}-400`} />
+        </div>
+        <p className="text-xs text-gray-500">{label}</p>
       </div>
+      <p className="text-2xl font-bold text-white">{value}</p>
+      {delta && <p className={`text-xs mt-1 ${delta.positive ? 'text-emerald-400' : 'text-red-300'}`}>{delta.text}</p>}
+    </div>
+  );
+}
+
+function Growth({ label, rate }: { label: string; rate: number }) {
+  const positive = rate >= 0;
+  return (
+    <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className={`text-2xl font-bold ${positive ? 'text-emerald-400' : 'text-red-300'}`}>
+        {positive ? '+' : ''}{rate}%
+      </p>
+      <p className="text-[10px] text-gray-600">vs previous period</p>
+    </div>
+  );
+}
+
+function MiniBars({ labels, values }: { labels: string[]; values: number[] }) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className="h-48 flex items-end justify-between gap-2">
+      {values.map((v, i) => (
+        <div key={labels[i]} className="flex-1 flex flex-col items-center">
+          <div className="w-full rounded-t bg-gradient-to-t from-blue-500 to-purple-500"
+            style={{ height: `${Math.max(2, (v / max) * 100)}%` }} title={`${labels[i]}: ${v}`} />
+          <span className="text-[9px] text-gray-600 mt-1">{labels[i]?.slice(8) || ''}</span>
+        </div>
+      ))}
     </div>
   );
 }
