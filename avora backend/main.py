@@ -199,6 +199,10 @@ from avora_automation import (
     get_all_tasks,
 )
 
+from core.bootstrap import (
+    get_bootstrap,
+)
+
 
 # ============================================================
 # VOICE RECOGNITION WORKER (Proper QThread)
@@ -2529,7 +2533,13 @@ class MainWindow(QWidget):
 
             return
 
-        self.thinking_label.deleteLater()
+        try:
+
+            self.thinking_label.deleteLater()
+
+        except RuntimeError:
+
+            pass
 
         self.thinking_label = None
 
@@ -3323,34 +3333,37 @@ class MainWindow(QWidget):
 
         self.remove_thinking()
 
-        # Remove every message layout
-        # except the permanent stretch.
-
-        while self.message_layout.count() > 1:
-
-            item = self.message_layout.takeAt(
-                0
-            )
-
-            if item.widget():
-
+        # Clear message layout by removing items one by one
+        # with defensive error handling to prevent deleted-object crashes
+        try:
+            while self.message_layout.count() > 1:
+                item = self.message_layout.takeAt(0)
+                if item is None:
+                    break
                 widget = item.widget()
-
-                widget.deleteLater()
-
-            elif item.layout():
-
-                child_layout = item.layout()
-
-                while child_layout.count():
-
-                    child = child_layout.takeAt(
-                        0
-                    )
-
-                    if child.widget():
-
-                        child.widget().deleteLater()
+                if widget is not None:
+                    try:
+                        widget.setParent(None)
+                        widget.deleteLater()
+                    except (RuntimeError, AttributeError):
+                        pass
+                else:
+                    # Handle nested layouts
+                    layout = item.layout()
+                    if layout is not None:
+                        try:
+                            while layout.count() > 0:
+                                child = layout.takeAt(0)
+                                if child.widget():
+                                    try:
+                                        child.widget().setParent(None)
+                                        child.widget().deleteLater()
+                                    except (RuntimeError, AttributeError):
+                                        pass
+                        except (RuntimeError, AttributeError):
+                            pass
+        except (RuntimeError, AttributeError):
+            pass
 
         self.update_status(
             "ready",
@@ -3409,35 +3422,44 @@ class MainWindow(QWidget):
         if self.is_processing:
             return
 
+        # Block rapid calls to prevent libshiboken crashes
+        if hasattr(self, '_new_chat_lock') and self._new_chat_lock:
+            return
+        self._new_chat_lock = True
+
         try:
-            stop_speaking()
-        except Exception:
-            pass
+            try:
+                stop_speaking()
+            except Exception:
+                pass
 
-        self.character_talking_signal.emit(False)
+            self.character_talking_signal.emit(False)
 
-        chat_id = str(uuid.uuid4())
-        now = datetime.now().isoformat()
+            chat_id = str(uuid.uuid4())
+            now = datetime.now().isoformat()
 
-        new_chat = {
-            "id": chat_id,
-            "title": "New Conversation",
-            "messages": [],
-            "created_at": now,
-            "updated_at": now,
-            "pinned": False,
-            "favorite": False,
-            "tags": [],
-        }
+            new_chat = {
+                "id": chat_id,
+                "title": "New Conversation",
+                "messages": [],
+                "created_at": now,
+                "updated_at": now,
+                "pinned": False,
+                "favorite": False,
+                "tags": [],
+            }
 
-        self.chats.insert(0, new_chat)
-        self.active_chat_id = chat_id
+            self.chats.insert(0, new_chat)
+            self.active_chat_id = chat_id
 
-        if self.chat_sidebar is not None:
-            self.chat_sidebar.set_chats(self.chats)
-            self.chat_sidebar.set_active_chat(self.active_chat_id)
+            if self.chat_sidebar is not None:
+                self.chat_sidebar.set_chats(self.chats)
+                self.chat_sidebar.set_active_chat(self.active_chat_id)
 
-        self.new_chat()
+            self.new_chat()
+        finally:
+            # Release lock after a longer delay to ensure UI is fully settled
+            QTimer.singleShot(500, lambda: setattr(self, '_new_chat_lock', False))
 
     def switch_chat(self, chat_id: str):
         """Switch to the chat with the given ID."""
@@ -4225,6 +4247,17 @@ def main():
         print("[AVORA AUTOMATION INIT ERROR]", error)
 
     # ====================================================
+    # INITIALIZE CORE ENGINES (modular architecture)
+    # ====================================================
+
+    try:
+        bootstrap_results = get_bootstrap().start()
+        skills_count = bootstrap_results.get("skills_registered", 0)
+        print(f"[CORE] Bootstrap complete - {skills_count} skills registered")
+    except Exception as error:
+        print("[CORE] Bootstrap error:", error)
+
+    # ====================================================
     # MAIN WINDOW
     # ====================================================
 
@@ -4266,6 +4299,26 @@ def main():
         print("[COMPANION] Failed to start:", e)
 
     # ====================================================
+    # INITIALIZE MISSIONS SYSTEM
+    # ====================================================
+
+    try:
+        from mission_tracker import get_mission_tracker
+        from mission_ui import WelcomeBackWidget
+        mission_tracker = get_mission_tracker()
+        print("[MISSIONS] Mission system initialized")
+        
+        # Show welcome back widget if there are active missions
+        if mission_tracker.get_active_missions():
+            welcome_back = WelcomeBackWidget(window)
+            if welcome_back.parent() is None:
+                welcome_back.setParent(window)
+            welcome_back.show()
+            print("[MISSIONS] Active missions found - showing welcome back")
+    except Exception as e:
+        print("[MISSIONS] Failed to initialize:", e)
+
+    # ====================================================
     # START SCREEN AWARENESS IF ENABLED
     # ====================================================
 
@@ -4296,6 +4349,10 @@ def main():
             pass
         try:
             window.stop_activity_monitor()
+        except Exception:
+            pass
+        try:
+            get_bootstrap().stop()
         except Exception:
             pass
 

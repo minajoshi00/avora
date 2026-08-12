@@ -205,103 +205,49 @@ def add_memory(
     memory_text,
     category="general",
 ):
-
+    """Add a memory entry with optional category."""
     if not _memory_enabled():
-
-        print(
-            "Memory is disabled in Settings."
-        )
-
+        print("Memory is disabled in Settings.")
         return False
 
     if not _auto_save_enabled():
-
-        print(
-            "Automatic memory saving is disabled."
-        )
-
+        print("Automatic memory saving is disabled.")
         return False
 
     if not memory_text:
-
         return False
 
-    memory_text = str(
-        memory_text
-    ).strip()
-
-    category = str(
-        category
-    ).strip().lower()
+    memory_text = str(memory_text).strip()
+    category = str(category).strip().lower()
 
     if not memory_text:
-
         return False
 
     with _memory_lock:
-
         memories = load_memories()
 
-        # ----------------------------------------------------
-        # PREVENT DUPLICATES
-        # ----------------------------------------------------
-
-        normalized_text = (
-            memory_text.lower()
-        )
-
+        # Prevent duplicates
+        normalized_text = memory_text.lower()
         for memory in memories:
-
-            existing_text = str(
-                memory.get(
-                    "text",
-                    "",
-                )
-            ).strip().lower()
-
+            existing_text = str(memory.get("text", "")).strip().lower()
             if existing_text == normalized_text:
-
                 return False
 
-        # ----------------------------------------------------
-        # MAX MEMORY LIMIT
-        # ----------------------------------------------------
-
+        # Max memory limit
         maximum = _max_memories()
-
         if len(memories) >= maximum:
+            memories.pop(0)
 
-            memories.pop(
-                0
-            )
-
-        # ----------------------------------------------------
-        # CREATE MEMORY
-        # ----------------------------------------------------
-
+        # Create memory
         new_memory = {
-
-            "id": _generate_memory_id(
-                memories
-            ),
-
+            "id": _generate_memory_id(memories),
             "text": memory_text,
-
             "category": category,
-
-            "created_at": datetime.now().isoformat(
-                timespec="seconds"
-            ),
-
+            "created_at": datetime.now().isoformat(timespec="seconds"),
         }
 
-        memories.append(
-            new_memory
-        )
-
-        return _save_file(
-            memories
-        )
+        memories.append(new_memory)
+        return _save_file(memories)
 
 
 # ============================================================

@@ -53,6 +53,13 @@ from settings import (
     restore_backup,
 )
 
+from secure_storage import (
+    get_secure_storage,
+    mask_key,
+    validate_key_format,
+    test_provider_connection,
+)
+
 try:
     from skills.email import (
         add_gmail_account,
@@ -114,6 +121,11 @@ CATEGORIES = [
     (
         "AI Engine",
         "AI provider and response behavior",
+    ),
+
+    (
+        "API Keys",
+        "Manage AI provider API keys",
     ),
 
     (
@@ -891,6 +903,9 @@ class SettingsPage(QWidget):
 
             "AI Engine":
             self.build_ai,
+
+            "API Keys":
+            self.build_api_keys,
 
             "Memory":
             self.build_memory,
@@ -1955,10 +1970,375 @@ class SettingsPage(QWidget):
 
     def build_advanced(self):
 
-        self.add_section(
-            "Advanced",
-            "Advanced developer and application controls.",
+        self.add_switch(
+            "advanced.debug_mode",
+            "Debug Mode",
+            "Enable additional debugging information.",
         )
+
+        self.add_switch(
+            "advanced.show_api_errors",
+            "Show API Errors",
+            "Display detailed API errors.",
+        )
+
+        self.add_switch(
+            "advanced.show_internal_errors",
+            "Show Internal Errors",
+            "Display internal application errors.",
+        )
+
+        self.add_switch(
+            "advanced.enable_logging",
+            "Enable Logging",
+            "Save application logs for troubleshooting.",
+        )
+
+        self.add_switch(
+            "advanced.enable_crash_recovery",
+            "Crash Recovery",
+            "Enable recovery systems after application crashes.",
+        )
+
+        self.add_switch(
+            "advanced.developer_mode",
+            "Developer Mode",
+            "Enable experimental developer features.",
+        )
+
+        self.add_action_button(
+            "Export Settings",
+            "Save all your settings to a JSON file.",
+            self.export_settings_file,
+        )
+
+        self.add_action_button(
+            "Import Settings",
+            "Load settings from a previously exported JSON file.",
+            self.import_settings_file,
+        )
+
+        self.add_spacer()
+
+    # ============================================================
+    # API KEYS
+    # ============================================================
+
+    def build_api_keys(self):
+
+        self.add_section(
+            "API Keys",
+            "Manage your AI provider API keys. Keys are stored securely on your device.",
+        )
+
+        # Info text
+        info_label = QLabel(
+            "API keys are required for AI functionality. "
+            "Keys are never shared and are stored encrypted on your device. "
+            "Only masked versions are visible in logs."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet(f"""
+            color: {MUTED};
+            font-size: 13px;
+            padding: 10px;
+            background: {CARD};
+            border-radius: 8px;
+            border: 1px solid {BORDER};
+        """)
+        self.content_layout.addWidget(info_label)
+
+        self.content_layout.addSpacing(20)
+
+        # Gemini API Key
+        self.add_api_key_card(
+            "gemini",
+            "Gemini API Key",
+            "Google Gemini (Primary AI Provider)",
+            "Get your key at https://makersuite.google.com/app/apikey",
+            "AI"
+        )
+
+        # Groq API Key
+        self.add_api_key_card(
+            "groq",
+            "Groq API Key",
+            "Groq (Fast AI Provider)",
+            "Get your key at https://console.groq.com/keys",
+            "gsk_"
+        )
+
+        # OpenAI API Key (optional)
+        self.add_api_key_card(
+            "openai",
+            "OpenAI API Key (Optional)",
+            "OpenAI GPT Models (Optional)",
+            "Get your key at https://platform.openai.com/api-keys",
+            "sk-"
+        )
+
+        self.content_layout.addSpacing(20)
+
+        # Status section
+        self.add_section(
+            "Connection Status",
+            "Current status of all configured AI providers.",
+        )
+
+        self.status_widget = QWidget()
+        self.status_layout = QVBoxLayout(self.status_widget)
+        self.status_layout.setContentsMargins(0, 0, 0, 0)
+        self.status_layout.setSpacing(10)
+        self.content_layout.addWidget(self.status_widget)
+
+        # Refresh button
+        refresh_btn = QPushButton("Refresh Status")
+        refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        refresh_btn.clicked.connect(self.refresh_provider_status)
+        self.content_layout.addWidget(refresh_btn)
+
+        self.content_layout.addStretch(1)
+
+        # Initial status check
+        self.refresh_provider_status()
+
+    def add_api_key_card(self, provider_id, title, subtitle, help_text, prefix=""):
+        """Create a card for managing an API key."""
+        card = QFrame()
+        card.setObjectName("SettingCard")
+        card.setMinimumHeight(120)
+        card.setStyleSheet(f"""
+            QFrame#SettingCard {{
+                background: {CARD};
+                border: 1px solid {BORDER};
+                border-radius: 12px;
+            }}
+            QFrame#SettingCard:hover {{
+                background: {CARD_HOVER};
+                border: 1px solid #35466A;
+            }}
+        """)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(20, 15, 20, 15)
+        layout.setSpacing(10)
+
+        # Title row
+        title_row = QHBoxLayout()
+        title_label = QLabel(f"<b>{title}</b>")
+        title_label.setStyleSheet(f"color: {TEXT}; font-size: 14px;")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
+
+        title_row.addWidget(title_label)
+        title_row.addWidget(subtitle_label, 1, Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(title_row)
+
+        # Help text
+        help_label = QLabel(help_text)
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet(f"color: {MUTED}; font-size: 12px;")
+        layout.addWidget(help_label)
+
+        # Input row
+        input_row = QHBoxLayout()
+
+        # Get current masked key
+        storage = get_secure_storage()
+        stored_key = storage.get_key(provider_id)
+        masked = mask_key(stored_key) if stored_key else "Not configured"
+
+        self.key_inputs = getattr(self, 'key_inputs', {})
+        key_input = QLineEdit()
+        key_input.setPlaceholderText(f"Enter {title}...")
+        key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        key_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: {BACKGROUND};
+                color: {TEXT};
+                border: 1px solid {BORDER};
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-size: 13px;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {ACCENT};
+            }}
+        """)
+        key_input.setMinimumWidth(300)
+        self.key_inputs[provider_id] = key_input
+        input_row.addWidget(key_input)
+
+        # Toggle visibility button
+        toggle_btn = QPushButton("👁")
+        toggle_btn.setFixedSize(36, 36)
+        toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {BACKGROUND};
+                color: {TEXT};
+                border: 1px solid {BORDER};
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background: {CARD_HOVER};
+            }}
+        """)
+
+        def toggle_visibility():
+            if key_input.echoMode() == QLineEdit.EchoMode.Password:
+                key_input.setEchoMode(QLineEdit.EchoMode.Normal)
+                toggle_btn.setText("🙈")
+            else:
+                key_input.setEchoMode(QLineEdit.EchoMode.Password)
+                toggle_btn.setText("👁")
+
+        toggle_btn.clicked.connect(toggle_visibility)
+        input_row.addWidget(toggle_btn)
+
+        # Save button
+        save_btn = QPushButton("Save")
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {ACCENT};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: {ACCENT_HOVER};
+            }}
+        """)
+
+        def save_key():
+            key = key_input.text().strip()
+            if not key:
+                QMessageBox.warning(self, "Invalid Key", "Please enter a valid API key.")
+                return
+
+            # Validate format
+            valid, msg = validate_key_format(provider_id, key)
+            if not valid:
+                reply = QMessageBox.question(
+                    self,
+                    "Key Format Warning",
+                    f"{msg}\n\nSave anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+
+            # Save to secure storage
+            storage = get_secure_storage()
+            if storage.set_key(provider_id, key):
+                QMessageBox.information(self, "Key Saved", f"{title} saved successfully!\n\nKey is encrypted and stored securely.")
+                key_input.clear()
+                self.refresh_provider_status()
+            else:
+                QMessageBox.critical(self, "Save Failed", "Could not save the API key.")
+
+        save_btn.clicked.connect(save_key)
+        input_row.addWidget(save_btn)
+
+        # Test button
+        test_btn = QPushButton("Test")
+        test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        test_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {BACKGROUND};
+                color: {TEXT};
+                border: 1px solid {BORDER};
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: {CARD_HOVER};
+            }}
+        """)
+
+        def test_key():
+            key = key_input.text().strip() or stored_key
+            if not key:
+                QMessageBox.warning(self, "No Key", "Please enter an API key to test.")
+                return
+
+            test_btn.setEnabled(False)
+            test_btn.setText("Testing...")
+            QApplication.processEvents()
+
+            success, message = test_provider_connection(provider_id, key)
+
+            test_btn.setEnabled(True)
+            test_btn.setText("Test")
+
+            if success:
+                QMessageBox.information(self, "Connection Successful", f"✓ {message}")
+            else:
+                QMessageBox.warning(self, "Connection Failed", f"✗ {message}")
+
+        test_btn.clicked.connect(test_key)
+        input_row.addWidget(test_btn)
+
+        layout.addLayout(input_row)
+
+        # Current status
+        status_label = QLabel(f"Current: {masked}")
+        status_label.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
+        layout.addWidget(status_label)
+
+        self.content_layout.addWidget(card)
+
+    def refresh_provider_status(self):
+        """Refresh the connection status for all providers."""
+        try:
+            # Clear existing status widgets
+            while self.status_layout.count():
+                item = self.status_layout.takeAt(0)
+                widget = item.widget()
+                if widget:
+                    widget.deleteLater()
+
+            providers = [
+                ("gemini", "Gemini", GEMINI_KEY),
+                ("groq", "Groq", GROQ_KEY),
+                ("openai", "OpenAI", OPENAI_KEY),
+            ]
+
+            for provider_id, name, key in providers:
+                status_row = QHBoxLayout()
+
+                if key:
+                    # Test connection
+                    success, message = test_provider_connection(provider_id, key)
+                    if success:
+                        status_icon = QLabel("✅")
+                        status_text = QLabel(f"<b>{name}</b>: {message}")
+                        status_text.setStyleSheet(f"color: {SUCCESS}; font-size: 13px;")
+                    else:
+                        status_icon = QLabel("❌")
+                        status_text = QLabel(f"<b>{name}</b>: {message}")
+                        status_text.setStyleSheet(f"color: {DANGER}; font-size: 13px;")
+                else:
+                    status_icon = QLabel("⚪")
+                    status_text = QLabel(f"<b>{name}</b>: Not configured")
+                    status_text.setStyleSheet(f"color: {MUTED}; font-size: 13px;")
+
+                status_row.addWidget(status_icon)
+                status_row.addWidget(status_text, 1)
+                self.status_layout.addLayout(status_row)
+
+        except Exception as e:
+            print(f"[Status Refresh Error] {e}")
+
+    # ============================================================
+    # ADVANCED
+    # ============================================================
+
+    def build_advanced(self):
 
         self.add_switch(
             "advanced.debug_mode",

@@ -46,6 +46,7 @@ class SystemContext:
     wifi_connected: bool = False
     wifi_ssid: Optional[str] = None
     external_ip: Optional[str] = None
+    local_ip: Optional[str] = None
 
 
 @dataclass
@@ -59,6 +60,7 @@ class DesktopContext:
     downloads_count: int = 0
     clipboard_text: Optional[str] = None
     clipboard_type: Optional[str] = None
+    local_ip: Optional[str] = None
 
 
 @dataclass

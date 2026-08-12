@@ -897,6 +897,35 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
 
     # =========================================================
+    # MISSIONS
+    # =========================================================
+
+    "missions": {
+        "enabled": True,
+
+        "max_active_missions": 5,
+
+        "auto_create_from_conversation": True,
+
+        "proactive_suggestions": True,
+
+        "proactive_cooldown_minutes": 60,
+
+        "show_milestone_celebrations": True,
+
+        "show_deadline_reminders": True,
+
+        "deadline_reminder_hours_before": 24,
+
+        "auto_update_progress": True,
+
+        "mission_memory_enabled": True,
+
+        "require_confirmation_for_completion": True,
+    },
+
+
+    # =========================================================
     # TIMER
     # =========================================================
 

@@ -144,6 +144,9 @@ class ContextSnapshot:
         "conversation_count", "last_interaction_time",
         "is_processing", "is_voice_active",
         "hour_of_day", "day_of_week",
+        # Mission context
+        "active_missions", "current_mission", "mission_progress",
+        "mission_next_action", "mission_deadline_soon",
     )
 
     def __init__(self):
@@ -164,6 +167,12 @@ class ContextSnapshot:
         self.is_voice_active: bool = False
         self.hour_of_day: int = 0
         self.day_of_week: int = 0
+        # Mission context
+        self.active_missions: list = []
+        self.current_mission: dict = None
+        self.mission_progress: float = 0.0
+        self.mission_next_action: dict = None
+        self.mission_deadline_soon: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -268,6 +277,40 @@ class ContextTracker:
             # Carry over goals and achievements
             snapshot.active_goals = list(self._current.active_goals) if self._current else []
             snapshot.recent_achievements = list(self._current.recent_achievements) if self._current else []
+
+            # =========================================================
+            # MISSION CONTEXT INTEGRATION
+            # =========================================================
+            try:
+                from mission_tracker import get_mission_tracker
+                tracker = get_mission_tracker()
+                active_missions = tracker.get_active_missions()
+                snapshot.active_missions = [m.title for m in active_missions[:3]]
+
+                if active_missions:
+                    # Get highest priority mission as current
+                    current = max(active_missions, key=lambda m: m.priority)
+                    snapshot.current_mission = {
+                        "id": current.id,
+                        "title": current.title,
+                        "progress": current.calculate_progress(),
+                    }
+                    snapshot.mission_progress = current.calculate_progress()
+
+                    # Get next action
+                    next_action = tracker.get_next_action(current.id)
+                    if next_action:
+                        snapshot.mission_next_action = next_action
+
+                    # Check if deadline is approaching
+                    if current.deadline:
+                        hours_until = (current.deadline - now) / 3600
+                        if hours_until < 24:
+                            snapshot.mission_deadline_soon = True
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.debug(f"Mission context error: {e}")
 
             # Store in history
             self._history.append(snapshot)
@@ -1817,3 +1860,21 @@ class CompanionIntelligence:
                 "conversations": snapshot.conversation_count,
                 "hour": snapshot.hour_of_day,
             }
+
+
+# =============================================================
+# GLOBAL INSTANCE
+# =============================================================
+
+_companion: Optional[CompanionIntelligence] = None
+_companion_lock = threading.Lock()
+
+
+def get_companion_intelligence() -> Optional[CompanionIntelligence]:
+    """Get the global companion intelligence instance."""
+    global _companion
+    if _companion is None:
+        with _companion_lock:
+            if _companion is None:
+                _companion = CompanionIntelligence()
+    return _companion
