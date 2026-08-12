@@ -50,11 +50,11 @@ export function Footer() {
               onClick={handleDeveloperClick}
               className="text-xl font-bold text-white cursor-pointer hover:text-blue-300 transition-all duration-300 relative group inline-block"
             >
-              Pratik Ojha
+              AVORA AI
               <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 group-hover:w-full transition-all duration-300" />
             </span>
             <p className="text-xs leading-relaxed text-gray-500 max-w-md">
-              Built with passion by Pratik Ojha. Independent AI project built with passion in Nepal.
+              Built with passion by AVORA AI co-founders Pratik Ojha and Atharba Bhandari. Independent AI project built with passion in Nepal.
             </p>
             <p className="text-[11px] text-gray-600">
               © {new Date().getFullYear()} AVORA. Independent project. Not a company.

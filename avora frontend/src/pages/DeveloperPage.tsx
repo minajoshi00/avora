@@ -18,7 +18,7 @@ import {
 // Typing text variants for hero section
 const typingVariants = [
   "Building the Future with AI",
-  "Founder & Solo Developer",
+  "Founder & Developer",
   "Python Developer",
   "AI Application Builder",
   "Creating Intelligent Software",
@@ -91,7 +91,7 @@ export function DeveloperHero() {
             Pratik Ojha
           </h1>
           <p className="text-2xl md:text-3xl text-gray-300 mb-8">
-            Founder & Solo Developer
+            Founder & Developer
           </p>
         </motion.div>
 
@@ -186,7 +186,7 @@ export function AboutMe() {
 
         <GlassCard className="space-y-6" glow="blue">
           <p className="text-lg text-gray-300 leading-relaxed">
-            I'm Pratik Ojha, an independent AI developer and startup founder based in Dhangadhi, Nepal. Balmiki International School is where I study, but this AI project is my own independent startup.
+            I'm Pratik Ojha, an AI developer and co-founder of AVORA AI based in Dhangadhi, Nepal. Balmiki International School is where I study, and this project is built together with my co-founder, Atharba Bhandari.
           </p>
 
           <p className="text-lg text-gray-300 leading-relaxed">

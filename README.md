@@ -44,4 +44,12 @@ AVORA is not just a chatbot — it is designed to become a personal AI partner t
 
 ---
 
+## 👥 Team
+- Pratik Ojha — Founder
+- Atharba Bhandari — Co-Founder
+
+AVORA is an AI project created and maintained by co-founders Pratik Ojha and Atharba Bhandari.
+
+---
+
 ## 🏗️ Project Structure
