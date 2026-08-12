@@ -14,10 +14,13 @@
 #   - Set AVORA_ANALYTICS_VIEW_KEY to the SAME value as VITE_ANALYTICS_VIEW_KEY
 #     in the frontend build — this is the only analytics secret the browser holds.
 
+# IMPORTANT: this repo is a monorepo. The analytics service lives in the
+# `avora-analytics/` subdirectory, so we set rootDir so Render builds/runs there.
 services:
   - type: web
     name: avora-analytics
     runtime: node
+    rootDir: avora-analytics
     plan: starter
     region: oregon
     branch: main
@@ -37,5 +40,7 @@ services:
         value: "false"
     disk:
       name: analytics-data
+      # Render runs the service from rootDir, so CWD is /opt/render/project/src
+      # and the DB is written to avora-analytics/data (relative to CWD).
       mountPath: /opt/render/project/src/avora-analytics/data
       sizeGB: 1

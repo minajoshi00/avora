@@ -18,10 +18,10 @@ import { formatCount, formatRate } from '../../lib/analytics-client';
 
 export function OverviewSection() {
   const bugReports = getBugReports();
-  const { state } = useAnalyticsSummary('30d');
+  const { state, reload } = useAnalyticsSummary('30d');
 
   if (state.status === 'loading') return <LoadingState />;
-  if (state.status === 'error') return <ErrorState message={state.message} />;
+  if (state.status === 'error') return <ErrorState message={state.message} onRetry={reload} />;
 
   const { totals, rates, breakdowns, hasData } = state.data;
   const providers = breakdowns.providers;

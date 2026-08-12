@@ -34,7 +34,7 @@ const deviceIcons: Record<string, typeof Monitor> = {
 
 export function UserAnalyticsSection() {
   const [range, setRange] = useState<Range>('7d');
-  const { state } = useAnalyticsSummary(range);
+  const { state, reload } = useAnalyticsSummary(range);
 
   const platforms = state.status === 'ready' ? state.data.breakdowns.platforms : [];
   const countries = state.status === 'ready' ? state.data.breakdowns.countries : [];
@@ -60,7 +60,7 @@ export function UserAnalyticsSection() {
     }));
 
   if (state.status === 'loading') return <LoadingState />;
-  if (state.status === 'error') return <ErrorState message={state.message} />;
+  if (state.status === 'error') return <ErrorState message={state.message} onRetry={reload} />;
 
   const { totals, rates, hasData } = state.data;
 

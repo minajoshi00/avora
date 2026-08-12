@@ -209,7 +209,7 @@ function renderSection(section: Section) {
 
 function AnalyticsSection() {
   const [range, setRange] = useState<Range>('7d');
-  const { state } = useAnalyticsSummary(range);
+  const { state, reload } = useAnalyticsSummary(range);
   const ranges: { id: Range; label: string }[] = [
     { id: 'today', label: 'Today' }, { id: '7d', label: '7 Days' },
     { id: '30d', label: '30 Days' }, { id: '90d', label: '90 Days' },
@@ -229,7 +229,7 @@ function AnalyticsSection() {
       </div>
 
       {state.status === 'loading' && <LoadingState />}
-      {state.status === 'error' && <ErrorState message={state.message} />}
+      {state.status === 'error' && <ErrorState message={state.message} onRetry={reload} />}
       {state.status === 'ready' && (
         <>
           {!state.data.hasData ? <EmptyState label="No analytics data yet" /> : (
@@ -247,9 +247,9 @@ function AnalyticsSection() {
 }
 
 function VisitorsSection() {
-  const { state } = useAnalyticsSummary('30d');
+  const { state, reload } = useAnalyticsSummary('30d');
   if (state.status === 'loading') return <LoadingState />;
-  if (state.status === 'error') return <ErrorState message={state.message} />;
+  if (state.status === 'error') return <ErrorState message={state.message} onRetry={reload} />;
 
   const countries = state.data.breakdowns.countries;
   const platforms = state.data.breakdowns.platforms;
@@ -287,9 +287,9 @@ function VisitorsSection() {
 }
 
 function ChartsSection() {
-  const { state } = useAnalyticsSummary('30d');
+  const { state, reload } = useAnalyticsSummary('30d');
   if (state.status === 'loading') return <LoadingState />;
-  if (state.status === 'error') return <ErrorState message={state.message} />;
+  if (state.status === 'error') return <ErrorState message={state.message} onRetry={reload} />;
 
   const { series, totals, rates, hasData } = state.data;
 

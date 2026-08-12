@@ -22,10 +22,10 @@ const timeRanges: { id: Range; label: string }[] = [
 
 export function DownloadAnalyticsSection() {
   const [range, setRange] = useState<Range>('7d');
-  const { state } = useAnalyticsSummary(range);
+  const { state, reload } = useAnalyticsSummary(range);
 
   if (state.status === 'loading') return <LoadingState />;
-  if (state.status === 'error') return <ErrorState message={state.message} />;
+  if (state.status === 'error') return <ErrorState message={state.message} onRetry={reload} />;
 
   const { totals, rates, breakdowns, series, hasData } = state.data;
   const platformTotal = breakdowns.platforms.reduce((s, p) => s + p.count, 0) || 1;

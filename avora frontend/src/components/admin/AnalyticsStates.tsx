@@ -14,14 +14,24 @@ export function LoadingState({ label = 'Loading real analytics…' }: { label?: 
   );
 }
 
-export function ErrorState({ message }: { message: string }) {
+export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-8 text-center">
+    <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-6 text-center">
       <AlertCircle size={28} className="text-red-400 mx-auto mb-3" />
-      <p className="text-sm text-red-300">{message}</p>
-      <p className="text-xs text-gray-500 mt-2">
-        The analytics server must be running and reachable. Check the AVORA analytics service.
+      <p className="text-base font-semibold text-white mb-2">Analytics temporarily unavailable</p>
+      <p className="text-sm text-red-200 mb-4">{message}</p>
+      <p className="text-xs text-gray-400 mb-4">
+        AVORA couldn't reach the analytics service. No fake numbers are shown while the real dashboard is offline.
       </p>
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center justify-center rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15"
+        >
+          Retry
+        </button>
+      ) : null}
     </div>
   );
 }
