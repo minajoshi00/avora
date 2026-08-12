@@ -71,6 +71,34 @@ const techStack = [
   { label: 'GitHub', color: 'from-white/10 to-white/5', textColor: 'text-gray-200' },
 ];
 
+const founders = [
+  {
+    name: 'Pratik Ojha',
+    role: 'Founder',
+    location: 'Dhangadhi, Nepal',
+    project: 'AVORA AI',
+    description: [
+      'Founder of AVORA AI and the project’s lead developer.',
+      'Passionate about creating intelligent, emotionally aware software.',
+      'Building AVORA to feel natural, personal, and genuinely helpful.',
+    ],
+  },
+  {
+    name: 'Atharba Bhandari',
+    role: 'Co-Founder',
+    location: 'Nepal',
+    project: 'AVORA AI',
+    age: '16',
+    education: 'Balmiki International School',
+    interests: 'Programming, AI, Web Development, Python, HTML, CSS, JavaScript',
+    description: [
+      'Student and passionate programmer from Nepal working on AVORA AI.',
+      'Co-Founder helping to develop and improve the project.',
+      'Focused on AI, software development, and building modern applications.',
+    ],
+  },
+];
+
 const missionItems = [
   { icon: MessageSquare, title: 'Natural Conversations', description: 'Fluid, human-like dialogue that understands context and nuance.' },
   { icon: Shield, title: 'Long-term Memory', description: 'Remembers interactions and builds genuine relationships over time.' },
@@ -149,25 +177,25 @@ export function CreatorStory() {
           className="text-center mb-20"
         >
           <SectionHeading
-            label="About the Developer"
-            title="Pratik Ojha"
-            description="Founder & Solo Developer — Independent AI Startup"
+            label="About the Founders"
+            title="AVORA Co-Founders"
+            description="The team behind AVORA AI — building next-generation personal intelligence together."
           />
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.3 }}
-            className="flex items-center justify-center gap-6 mt-8 text-sm text-gray-400"
+            className="flex flex-col items-center justify-center gap-4 mt-8 text-sm text-gray-400 md:flex-row"
           >
             <span className="flex items-center gap-2">
               <MapPin size={14} className="text-blue-400" />
-              Dhangadhi, Nepal
+              Nepal
             </span>
             <span className="w-1 h-1 rounded-full bg-gray-600" />
             <span className="flex items-center gap-2">
               <Briefcase size={14} className="text-purple-400" />
-              Independent AI Startup
+              AVORA AI Co-Founders
             </span>
           </motion.div>
         </motion.div>
@@ -177,16 +205,62 @@ export function CreatorStory() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-100px' }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="max-w-3xl mx-auto mb-24"
+          className="max-w-5xl mx-auto mb-24"
         >
-          <div className="relative rounded-3xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-8 md:p-12">
-            <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-white/[0.04] to-transparent pointer-events-none" />
-            <p className="text-lg md:text-xl text-gray-300 leading-relaxed relative">
-              I am an independent developer from Nepal with a passion for building intelligent software that solves real-world problems. 
-              Currently focused on developing an advanced AI companion that feels natural, emotional, proactive, and genuinely helpful. 
-              I love learning new technologies and continuously improving my skills through hands-on projects. 
-              This project represents my long-term vision — built independently with ambition, creativity, and a commitment to quality.
-            </p>
+          <div className="grid gap-6 lg:grid-cols-2">
+            {founders.map((founder, index) => (
+              <motion.div
+                key={founder.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.7, delay: index * 0.1 }}
+                whileHover={{ y: -6 }}
+                className="relative rounded-3xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-8 overflow-hidden"
+              >
+                <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-white/[0.04] to-transparent pointer-events-none" />
+                <div className="relative">
+                  <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h3 className="text-2xl font-bold text-white">{founder.name}</h3>
+                      <p className="text-sm uppercase tracking-[0.2em] font-semibold text-blue-300 mt-1">{founder.role}</p>
+                    </div>
+                    <span className="text-xs text-gray-400 uppercase tracking-[0.2em] font-medium">{founder.project}</span>
+                  </div>
+
+                  <div className="grid gap-3 text-sm text-gray-300">
+                    <div className="flex items-center justify-between rounded-2xl bg-white/5 border border-white/[0.06] p-4">
+                      <span className="text-gray-400">Location</span>
+                      <span className="text-white">{founder.location}</span>
+                    </div>
+                    {founder.age && (
+                      <div className="flex items-center justify-between rounded-2xl bg-white/5 border border-white/[0.06] p-4">
+                        <span className="text-gray-400">Age</span>
+                        <span className="text-white">{founder.age}</span>
+                      </div>
+                    )}
+                    {founder.education && (
+                      <div className="flex items-center justify-between rounded-2xl bg-white/5 border border-white/[0.06] p-4">
+                        <span className="text-gray-400">Education</span>
+                        <span className="text-white">{founder.education}</span>
+                      </div>
+                    )}
+                    {founder.interests && (
+                      <div className="rounded-2xl bg-white/5 border border-white/[0.06] p-4">
+                        <span className="text-gray-400">Interests / Skills</span>
+                        <p className="mt-2 text-white">{founder.interests}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6 space-y-3 text-gray-300 text-sm leading-relaxed">
+                    {founder.description.map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
           </div>
         </motion.div>
 
@@ -198,8 +272,8 @@ export function CreatorStory() {
             transition={{ duration: 0.7 }}
             className="text-center mb-12"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">My Roles</h2>
-            <p className="text-gray-400">Wearing many hats to bring the vision to life</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Our Roles</h2>
+            <p className="text-gray-400">Wearing many hats to bring the vision to life together</p>
           </motion.div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {roles.map((role, i) => (
