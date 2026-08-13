@@ -78,6 +78,8 @@ class HealthMonitor:
             "skills": self._check_skills,
             "config": self._check_config,
             "filesystem": self._check_filesystem,
+            "ai_providers": self._check_ai_providers,
+            "network": self._check_network,
         }
     
     def check_all(self) -> Dict[str, HealthStatus]:
@@ -138,6 +140,68 @@ class HealthMonitor:
             "timestamp": datetime.now().isoformat(),
         }
     
+    def _check_ai_providers(self) -> HealthStatus:
+        """Check AI provider configuration and availability."""
+        try:
+            from ai_logic import GEMINI_KEY, GROQ_KEY, gemini, groq
+        except Exception:
+            # ai_logic may not be importable in all contexts
+            return HealthStatus(
+                name="ai_providers",
+                status="unknown",
+                message="AI logic module not available",
+            )
+
+        details = {
+            "gemini_configured": bool(GEMINI_KEY),
+            "groq_configured": bool(GROQ_KEY),
+            "gemini_client_ready": gemini is not None,
+            "groq_client_ready": groq is not None,
+        }
+
+        if not GEMINI_KEY and not GROQ_KEY:
+            return HealthStatus(
+                name="ai_providers",
+                status="degraded",
+                message="No AI providers configured - add Gemini or Groq key in Settings",
+                details=details,
+            )
+
+        if gemini is None and groq is None:
+            return HealthStatus(
+                name="ai_providers",
+                status="degraded",
+                message="AI clients could not be initialized (check API keys)",
+                details=details,
+            )
+
+        return HealthStatus(
+            name="ai_providers",
+            status="healthy",
+            message="AI providers configured",
+            details=details,
+        )
+
+    def _check_network(self) -> HealthStatus:
+        """Check network connectivity without blocking."""
+        try:
+            import socket
+            socket.setdefaulttimeout(3)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.connect(("8.8.8.8", 80))
+            sock.close()
+            return HealthStatus(
+                name="network",
+                status="healthy",
+                message="Network reachable",
+            )
+        except Exception as e:
+            return HealthStatus(
+                name="network",
+                status="degraded",
+                message="Network unreachable: " + str(e),
+            )
+
     def _check_database(self) -> HealthStatus:
         """Check database health."""
         try:

@@ -55,9 +55,12 @@ class AppDatabase:
             self._create_tables()
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
+            self._conn = None
 
     def _create_tables(self):
         """Create database tables if they don't exist."""
+        if self._conn is None:
+            return
         try:
             cursor = self._conn.cursor()
             cursor.executescript("""
@@ -111,9 +114,25 @@ class AppDatabase:
         except Exception as e:
             logger.error(f"Table creation failed: {e}")
 
+    def _execute(self, query: str, params: tuple = (), fetch: str = "all"):
+        """Execute a query safely, handling None connection."""
+        if self._conn is None:
+            return [] if fetch in ("all", "one") else None
+        try:
+            cursor = self._conn.cursor()
+            cursor.execute(query, params)
+            result = cursor.fetchall()
+            self._conn.commit()
+            return result
+        except Exception as e:
+            logger.error(f"Query failed: {e}")
+            return [] if fetch == "all" else (None if fetch == "one" else None)
+
     def get_app_count(self) -> int:
         """Get the number of indexed applications."""
         try:
+            if self._conn is None:
+                return 0
             cursor = self._conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM applications")
             return cursor.fetchone()[0]
@@ -127,6 +146,7 @@ class AppDatabase:
                 self._conn.close()
             except Exception:
                 pass
+        self._conn = None
 
 
 __all__ = ["AppDatabase", "get_database"]

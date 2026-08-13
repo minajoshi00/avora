@@ -45,12 +45,15 @@ import sys
 import platform
 import socket
 import traceback
+import logging
 
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote_plus
 
 from app_utils import clean_ai_reply, sanitize_user_text
+
+logger = logging.getLogger("AILogic")
 
 try:
     from dotenv import load_dotenv
@@ -339,18 +342,36 @@ def _mask_key(key: str) -> str:
         return "***MISSING***" if not key else key[:6] + "****"
     return key[:6] + "..." + key[-4:]
 
-def _check_internet() -> bool:
-    """Check if internet is available by attempting to connect to public DNS."""
+_INTERNET_CACHE: Optional[bool] = None
+_INTERNET_CACHE_TIME: float = 0.0
+_INTERNET_CACHE_TTL: float = 15.0  # cache for 15 seconds
+
+def _check_internet(force_refresh: bool = False) -> bool:
+    """Check if internet is available by attempting to connect to public DNS.
+    Results are cached to avoid repeated DNS lookups on every call."""
+    global _INTERNET_CACHE, _INTERNET_CACHE_TIME
+    now = time.time()
+    if not force_refresh and _INTERNET_CACHE is not None and (now - _INTERNET_CACHE_TIME < _INTERNET_CACHE_TTL):
+        return _INTERNET_CACHE
+
+    result = False
     try:
         socket.create_connection(("8.8.8.8", 53), timeout=3)
-        return True
+        result = True
     except OSError:
         pass
-    try:
-        socket.create_connection(("1.1.1.1", 53), timeout=3)
-        return True
-    except OSError:
-        return False
+    if not result:
+        try:
+            socket.create_connection(("1.1.1.1", 53), timeout=3)
+            result = True
+        except OSError:
+            result = False
+
+    _INTERNET_CACHE = result
+    _INTERNET_CACHE_TIME = now
+    if not result:
+        logger.info("Internet connectivity check returned False")
+    return result
 
 def _log_ai_status():
     """Log detailed AI provider status for debugging."""
@@ -684,10 +705,10 @@ RECENT CONVERSATION:
 
 def ask_gemini(prompt: str):
     if not gemini:
-        print("[Gemini] Client not initialized - check API key")
+        logger.warning("Gemini client not initialized - check API key")
         return None
     if not _check_internet():
-        print("[Gemini] No internet connection")
+        logger.info("Gemini request skipped: no internet connection")
         return None
     try:
         response = gemini.models.generate_content(
@@ -699,28 +720,22 @@ def ask_gemini(prompt: str):
         answer = getattr(response, "text", "")
         return clean_text(answer)
     except Exception as error:
-        print("\n" + "="*60)
-        print("[Gemini ERROR]")
-        print("="*60)
-        print(f"  Provider: Gemini")
-        print(f"  Model: {GEMINI_MODEL}")
-        print(f"  API Key: {_mask_key(GEMINI_KEY)}")
-        print(f"  Error Type: {type(error).__name__}")
-        print(f"  Error Message: {str(error)}")
         error_str = str(error).lower()
         if "api key" in error_str or "authentication" in error_str or "401" in error_str or "403" in error_str:
-            print(f"  DIAGNOSIS: Authentication failed - API key invalid or expired")
+            error_category = "authentication"
         elif "quota" in error_str or "rate limit" in error_str or "429" in error_str:
-            print(f"  DIAGNOSIS: Quota/rate limit exceeded")
+            error_category = "quota"
         elif "timeout" in error_str or "timed out" in error_str:
-            print(f"  DIAGNOSIS: Request timeout")
+            error_category = "timeout"
         elif "network" in error_str or "connection" in error_str:
-            print(f"  DIAGNOSIS: Network/connection error")
+            error_category = "network"
         else:
-            print(f"  DIAGNOSIS: Unknown error")
-        print(f"\nFull Traceback:")
-        traceback.print_exc(file=sys.stdout)
-        print("="*60 + "\n")
+            error_category = "unknown"
+        logger.warning(
+            "Gemini request failed",
+            extra={"provider": "gemini", "model": GEMINI_MODEL, "error_type": type(error).__name__, "category": error_category},
+        )
+        logger.debug("Gemini error detail: %s", str(error))
         return None
 
 
@@ -730,10 +745,10 @@ def ask_gemini(prompt: str):
 
 def ask_groq(prompt: str):
     if not groq:
-        print("[Groq] Client not initialized - check API key")
+        logger.warning("Groq client not initialized - check API key")
         return None
     if not _check_internet():
-        print("[Groq] No internet connection")
+        logger.info("Groq request skipped: no internet connection")
         return None
     try:
         response = groq.chat.completions.create(
@@ -745,28 +760,22 @@ def ask_groq(prompt: str):
         answer = response.choices[0].message.content
         return clean_text(answer)
     except Exception as error:
-        print("\n" + "="*60)
-        print("[Groq ERROR]")
-        print("="*60)
-        print(f"  Provider: Groq")
-        print(f"  Model: {GROQ_MODEL}")
-        print(f"  API Key: {_mask_key(GROQ_KEY)}")
-        print(f"  Error Type: {type(error).__name__}")
-        print(f"  Error Message: {str(error)}")
         error_str = str(error).lower()
         if "api key" in error_str or "authentication" in error_str or "401" in error_str or "403" in error_str:
-            print(f"  DIAGNOSIS: Authentication failed - API key invalid or expired")
+            error_category = "authentication"
         elif "quota" in error_str or "rate limit" in error_str or "429" in error_str:
-            print(f"  DIAGNOSIS: Quota/rate limit exceeded")
+            error_category = "quota"
         elif "timeout" in error_str or "timed out" in error_str:
-            print(f"  DIAGNOSIS: Request timeout")
+            error_category = "timeout"
         elif "network" in error_str or "connection" in error_str:
-            print(f"  DIAGNOSIS: Network/connection error")
+            error_category = "network"
         else:
-            print(f"  DIAGNOSIS: Unknown error")
-        print(f"\nFull Traceback:")
-        traceback.print_exc(file=sys.stdout)
-        print("="*60 + "\n")
+            error_category = "unknown"
+        logger.warning(
+            "Groq request failed",
+            extra={"provider": "groq", "model": GROQ_MODEL, "error_type": type(error).__name__, "category": error_category},
+        )
+        logger.debug("Groq error detail: %s", str(error))
         return None
 
 
@@ -775,75 +784,70 @@ def ask_groq(prompt: str):
 # ============================================================
 
 def ask_ai(prompt: str):
+    """Route prompt to the configured AI provider with exponential backoff and fallback."""
     primary = get_setting("ai.primary_provider", "gemini")
     fallback = get_setting("ai.fallback_provider", "groq")
     automatic_fallback = get_setting("ai.automatic_fallback", True)
 
     providers = {"gemini": ask_gemini, "groq": ask_groq}
 
-    print(f"\n[AI Router] Primary: {primary}, Fallback: {fallback}, Auto-fallback: {automatic_fallback}")
+    logger.info(
+        "AI request routed",
+        extra={"primary": primary, "fallback": fallback, "auto_fallback": automatic_fallback},
+    )
 
-    # Try primary with retry
+    # Build provider chain: primary first, fallback second
+    provider_chain = []
     first_provider = providers.get(primary)
     if first_provider:
-        print(f"[AI Router] Trying primary provider: {primary}")
-        answer = first_provider(prompt)
-        if answer:
-            print(f"[AI Router] Primary provider {primary} succeeded")
-            return answer
-        print(f"[AI Router] Primary provider {primary} failed, retrying...")
-        # Retry once
-        answer = first_provider(prompt)
-        if answer:
-            print(f"[AI Router] Primary provider {primary} succeeded on retry")
-            return answer
+        provider_chain.append(primary)
+    if automatic_fallback and fallback != primary:
+        fb_provider = providers.get(fallback)
+        if fb_provider:
+            provider_chain.append(fallback)
 
-    # Automatic fallback
-    if automatic_fallback:
-        fallback_provider = providers.get(fallback)
-        if fallback_provider and fallback != primary:
-            print(f"[AI Router] Trying fallback provider: {fallback}")
-            answer = fallback_provider(prompt)
+    if not provider_chain:
+        if not GEMINI_KEY and not GROQ_KEY:
+            return (
+                "Brooo, I could not connect to my AI right now.\n\n"
+                "No API keys configured.\n\n"
+                "Please add a Gemini or Groq API key in Settings."
+            )
+        return "Brooo, I could not connect to my AI right now."
+
+
+    backoff_base = 1.0
+
+    for idx, provider_name in enumerate(provider_chain):
+        provider_func = providers[provider_name]
+        max_attempts = 2 if idx == 0 else 1
+
+        for attempt in range(1, max_attempts + 1):
+            answer = provider_func(prompt)
             if answer:
-                print(f"[AI Router] Fallback provider {fallback} succeeded")
-                return answer
-            print(f"[AI Router] Fallback provider {fallback} failed, retrying...")
-            # Retry fallback
-            answer = fallback_provider(prompt)
-            if answer:
-                print(f"[AI Router] Fallback provider {fallback} succeeded on retry")
+                logger.info("Provider succeeded", extra={"provider": provider_name, "attempt": attempt})
                 return answer
 
-    print(f"[AI Router] All providers failed")
+            if attempt < max_attempts:
+                backoff = backoff_base * (2 ** (attempt - 1))
+                logger.debug("Retrying %s (attempt %d/%d) after %.1fs", provider_name, attempt + 1, max_attempts, backoff)
+                time.sleep(backoff)
 
+        logger.warning("Provider exhausted retries", extra={"provider": provider_name, "attempts": max_attempts})
+
+    if not _check_internet(force_refresh=True):
+        return "Brooo, I couldn't connect to my AI right now. Internet connection unavailable."
     if not GEMINI_KEY and not GROQ_KEY:
-        return (
-            "Brooo, I couldn't connect to my AI right now 😭\n\n"
-            "DIAGNOSIS: No API keys configured.\n\n"
-            "Please configure at least one API key in Settings:\n"
-            "• Go to Settings → AI Engine\n"
-            "• Add your Gemini or Groq API key\n"
-            "• Click 'Test Connection' to verify"
-        )
-
-    if not _check_internet():
-        return (
-            "Brooo, I couldn't connect to my AI right now 😭\n\n"
-            "DIAGNOSIS: Internet connection unavailable.\n\n"
-            "Please check your internet connection and try again."
-        )
+        return "Brooo, I couldn't connect to my AI right now. No API keys configured."
 
     return (
-        "Brooo, I couldn't connect to my AI right now 😭\n\n"
-        "DIAGNOSIS: All providers failed.\n\n"
-        "This could be due to:\n"
-        "• API quota exceeded\n"
-        "• Invalid API keys\n"
-        "• Network timeout\n\n"
-        "Please check the console logs for detailed error information."
+        "Brooo, I could not connect to my AI right now.\n\n"
+        "All AI providers failed. This could be due to:\n"
+        "API quota, invalid keys, or network issues."
     )
 
 
+# ====
 # ============================================================
 # REQUEST CLASSIFICATION
 # ============================================================
@@ -2123,8 +2127,9 @@ def process_message(user_message: str, attachments: Optional[list[dict]] = None)
                 # Check if any memory is relevant to current topic
                 relevant_memories = []
                 for mem in memories:
-                    if any(word in mem.lower() for word in lower_msg.split()):
-                        relevant_memories.append(mem)
+                    mem_text = str(mem) if not isinstance(mem, str) else mem
+                    if any(word in mem_text.lower() for word in lower_msg.split()):
+                        relevant_memories.append(mem_text)
                 if relevant_memories:
                     memory_context = f"Relevant memories found: {'; '.join(relevant_memories[:3])}\n"
         except Exception:

@@ -14,8 +14,10 @@ Provides:
 import os
 import sys
 import json
-import traceback
+import logging
 from typing import Any, Optional
+
+logger = logging.getLogger("ChatWorker")
 
 from PySide6.QtCore import QThread, Signal, QMutex
 
@@ -98,12 +100,10 @@ class StreamingWorker(QThread):
                 self.stream_finished.emit(self._full_response)
 
         except Exception as error:
-            print("\n========== STREAMING WORKER ERROR ==========")
-            traceback.print_exc()
-            print("============================================\n")
+            logger.warning("Streaming worker error: %s", error, exc_info=False)
 
             if not self.is_cancelled():
-                error_msg = f"Sorry brooo 😭\n\nAn error occurred: {str(error)}"
+                error_msg = "Sorry brooo 😭\n\nSomething went wrong generating my response."
                 self.stream_failed.emit(error_msg)
 
     def _simulate_streaming(self, text: str):
@@ -199,8 +199,6 @@ class RegenerateWorker(QThread):
             self.finished.emit(reply)
 
         except Exception as error:
-            print("\n========== REGENERATE ERROR ==========")
-            traceback.print_exc()
-            print("======================================\n")
+            logger.warning("Regenerate worker error: %s", error, exc_info=False)
             if not self.is_cancelled():
-                self.failed.emit(str(error))
+                self.failed.emit("Sorry brooo 😭\n\nSomething went wrong regenerating my response.")

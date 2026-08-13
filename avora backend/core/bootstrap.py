@@ -23,13 +23,6 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger("CoreBootstrap")
 
-# Skill modules that register themselves via register_skill()
-_SKILL_MODULES = [
-    "skills.launcher_skill",
-    "skills.browser_skill",
-    "skills.system_skill",
-]
-
 # Core engine getters keyed by name: name -> (module, getter)
 _ENGINE_GETTERS = {
     "intelligence": ("core.intelligence_engine", "get_intelligence_engine"),
@@ -60,7 +53,11 @@ class CoreBootstrap:
         return cls._instance
 
     def __init__(self):
+        if getattr(self, "_init_done", False):
+            return
+        self._init_done = True
         self._started = False
+        self._results: Dict[str, Any] = {}
         self._engines: Dict[str, Any] = {}
 
     # ========================================================
@@ -68,11 +65,11 @@ class CoreBootstrap:
     # ========================================================
 
     def start(self) -> Dict[str, Any]:
-        """Start all core systems."""
+        """Start all core systems and return status dict."""
         if self._started:
-            return self._started
+            return self._results
 
-        results = {}
+        results: Dict[str, Any] = {}
 
         # 1. Register all skills
         results["skills_registered"] = self.load_skills()
@@ -83,9 +80,9 @@ class CoreBootstrap:
             indexer = get_app_indexer()
             app_count = indexer.index_applications()
             results["apps_indexed"] = app_count
-            logger.info(f"App index: {app_count} applications")
+            logger.info("App index: %s applications", app_count)
         except Exception as e:
-            logger.warning(f"App indexing failed: {e}")
+            logger.warning("App indexing failed: %s", e)
 
         # 2. Initialize core engines
         for name, (module_name, getter) in _ENGINE_GETTERS.items():
@@ -93,9 +90,9 @@ class CoreBootstrap:
                 module = importlib.import_module(module_name)
                 engine = getattr(module, getter)()
                 self._engines[name] = engine
-                logger.info(f"{name} engine initialized")
+                logger.info("%s engine initialized", name)
             except Exception as e:
-                logger.warning(f"{name} engine init failed: {e}")
+                logger.warning("%s engine init failed: %s", name, e)
 
         # 3. Collect health status
         health = self._engines.get("health")
@@ -104,89 +101,41 @@ class CoreBootstrap:
                 status = health.get_health_status()
                 results["health"] = status
             except Exception as e:
-                logger.warning(f"Health check failed: {e}")
+                logger.warning("Health check failed: %s", e)
 
-        self._started = results
+        self._started = True
+        self._results = results
         return results
+
+    def load_skills(self) -> List[str]:
+        """Discover and register all available skills."""
+        registered: List[str] = []
+        try:
+            import skills
+            for module_info in pkgutil.iter_modules(skills.__path__):
+                mod_name = module_info.name
+                if mod_name.startswith("_"):
+                    continue
+                try:
+                    full_name = f"skills.{mod_name}"
+                    importlib.import_module(full_name)
+                    registered.append(full_name)
+                except Exception as e:
+                    logger.debug("Skill registration skipped %s: %s", mod_name, e)
+        except ImportError:
+            logger.warning("skills package not available")
+        return registered
 
     def stop(self):
         """Shut down core systems gracefully."""
-        context = self._engines.get("context")
-        if context is not None:
-            try:
-                context.stop()
-                logger.info("Context engine stopped")
-            except Exception as e:
-                logger.debug(f"Context stop error: {e}")
-        self._started = False
-
-    def load_skills(self) -> int:
-        """
-        Import all skill modules so they register themselves.
-        Returns the number of skills registered.
-        """
-        count = 0
-        for module_name in _SKILL_MODULES:
-            try:
-                importlib.import_module(module_name)
-                count += 1
-                logger.debug(f"Loaded skill module: {module_name}")
-            except Exception as e:
-                logger.warning(f"Failed to load skill module {module_name}: {e}")
-
-        try:
-            from skills import SKILL_REGISTRY
-            return len(SKILL_REGISTRY)
-        except Exception:
-            return count
-
-    def get_engines(self) -> Dict[str, Any]:
-        """Get initialized engine instances."""
-        return dict(self._engines)
-
-    def get_engine(self, name: str) -> Optional[Any]:
-        """Get a specific engine by name."""
-        return self._engines.get(name)
-
-    def apply_context_to_snapshot(self, snapshot) -> Dict[str, Any]:
-        """
-        Bridge between Context Engine and Intelligence Engine.
-
-        Copies live context data from the ContextEngine into the
-        Intelligence Engine's ContextSnapshot-compatible dict.
-        """
-        context = self._engines.get("context")
-        if context is None:
-            return {}
-
-        try:
-            data = context.get_context()
-            return {
-                "active_window": (data.get("desktop") or {}).get("active_window_title"),
-                "active_process": (data.get("desktop") or {}).get("active_process_name"),
-                "cpu_usage": (data.get("system") or {}).get("cpu_usage", 0.0),
-                "memory_usage": (data.get("system") or {}).get("memory_usage_percent", 0.0),
-                "battery_level": (data.get("system") or {}).get("battery_level"),
-                "is_battery_powered": (data.get("system") or {}).get("is_battery_powered", False),
-                "wifi_connected": (data.get("system") or {}).get("wifi_connected", False),
-                "idle_minutes": (data.get("user") or {}).get("idle_minutes", 0.0),
-                "time_of_day": (data.get("user") or {}).get("time_of_day"),
-                "day_of_week": (data.get("user") or {}).get("day_of_week"),
-            }
-        except Exception as e:
-            logger.debug(f"Context snapshot error: {e}")
-            return {}
+        for name, engine in self._engines.items():
+            stop_method = getattr(engine, "stop", None)
+            if callable(stop_method):
+                try:
+                    stop_method()
+                    logger.info("%s engine stopped", name)
+                except Exception as e:
+                    logger.debug("%s engine stop error: %s", name, e)
 
 
-_bootstrap = None
-
-
-def get_bootstrap() -> CoreBootstrap:
-    """Get the singleton bootstrap."""
-    global _bootstrap
-    if _bootstrap is None:
-        _bootstrap = CoreBootstrap()
-    return _bootstrap
-
-
-__all__ = ["CoreBootstrap", "get_bootstrap"]
+__all__ = ["CoreBootstrap"]

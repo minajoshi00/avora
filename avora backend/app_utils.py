@@ -1,5 +1,5 @@
 import re
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 
 def sanitize_user_text(text: Any) -> str:

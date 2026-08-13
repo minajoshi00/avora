@@ -7,7 +7,7 @@ Missions represent something the user wants to accomplish.
 This module provides the core data model, storage, and CRUD operations.
 
 Architecture:
-  Mission → Milestone → Task → Action
+  Mission to Milestone to Task to Action
 
 Features:
   - Hierarchical mission structure
@@ -18,6 +18,7 @@ Features:
   - Thread-safe operations
   - Atomic JSON storage
   - Automatic backups
+  - Corrupted-state recovery
 
 Integration:
   - Companion Intelligence (proactive mission suggestions)
@@ -28,7 +29,7 @@ Integration:
 
 Example:
     from mission_tracker import get_mission_tracker
-    
+
     tracker = get_mission_tracker()
     mission = tracker.create_mission(
         title="Build My Website",
@@ -46,12 +47,15 @@ import os
 import time
 import threading
 import uuid
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 from app_paths import APP_DATA_DIR
 from settings import get_setting, set_setting
+
+logger = logging.getLogger("MissionTracker")
 
 # =========================================================================
 # PATHS
@@ -154,7 +158,10 @@ class Milestone:
         milestone.created_at = data.get("created_at", time.time())
         milestone.completed_at = data.get("completed_at")
         milestone.order = data.get("order", 0)
-        milestone.tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
+        try:
+            milestone.tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
+        except Exception:
+            milestone.tasks = []
         return milestone
 
 
@@ -250,7 +257,10 @@ class Mission:
         mission.tags = data.get("tags", [])
         mission.context = data.get("context", {})
         mission.metadata = data.get("metadata", {})
-        mission.milestones = [Milestone.from_dict(m) for m in data.get("milestones", [])]
+        try:
+            mission.milestones = [Milestone.from_dict(m) for m in data.get("milestones", [])]
+        except Exception:
+            mission.milestones = []
         return mission
 
 
@@ -266,10 +276,11 @@ class MissionTracker:
     def __init__(self):
         self._lock = threading.RLock()
         self._missions: Dict[str, Mission] = {}
+        self._save_count = 0
         self._load_missions()
 
     def _load_missions(self) -> None:
-        """Load missions from disk."""
+        """Load missions from disk with corruption recovery."""
         if not MISSIONS_FILE.exists():
             self._save_missions()
             return
@@ -279,13 +290,85 @@ class MissionTracker:
                 data = json.load(f)
             if isinstance(data, dict):
                 for mission_data in data.get("missions", []):
-                    mission = Mission.from_dict(mission_data)
-                    self._missions[mission.id] = mission
+                    try:
+                        mission = Mission.from_dict(mission_data)
+                        self._missions[mission.id] = mission
+                    except Exception as e:
+                        logger.warning("Skipping corrupted mission entry: %s", e)
         except (json.JSONDecodeError, OSError) as e:
-            print(f"[MISSIONS] Load error: {e}")
+            logger.error("Missions file corrupted (%s). Attempting recovery from backup...", e)
+            self._recover_from_backup()
+
+    def _recover_from_backup(self) -> bool:
+        """Attempt to recover missions from the most recent valid backup."""
+        try:
+            if not MISSION_BACKUP_DIR.exists():
+                logger.warning("No mission backup directory found")
+                return False
+
+            # Find most recent backup file
+            backups = sorted(
+                MISSION_BACKUP_DIR.glob("missions_*.json"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if not backups:
+                logger.warning("No mission backups found")
+                return False
+
+            for backup in backups:
+                try:
+                    with open(backup, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if not isinstance(data, dict) or "missions" not in data:
+                        continue
+                    self._missions.clear()
+                    for mission_data in data.get("missions", []):
+                        try:
+                            mission = Mission.from_dict(mission_data)
+                            self._missions[mission.id] = mission
+                        except Exception:
+                            continue
+                    logger.info("Recovered %d missions from backup: %s", len(self._missions), backup.name)
+                    # Restore the recovered file as the primary
+                    self._save_missions()
+                    return True
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+            logger.warning("All mission backups were invalid")
+            return False
+        except Exception as e:
+            logger.error("Backup recovery failed: %s", e)
+            return False
+
+    def create_backup(self) -> Optional[str]:
+        """Create a timestamped backup of the current missions state."""
+        try:
+            MISSION_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            backup_path = MISSION_BACKUP_DIR / f"missions_{timestamp}.json"
+            data = {
+                "version": 1,
+                "missions": [m.to_dict() for m in self._missions.values()],
+                "last_updated": time.time(),
+            }
+            with open(backup_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            # Keep only the last 10 backups
+            backups = sorted(MISSION_BACKUP_DIR.glob("missions_*.json"))
+            for old in backups[:-10]:
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+            return str(backup_path)
+        except Exception as e:
+            logger.error("Backup creation failed: %s", e)
+            return None
 
     def _save_missions(self) -> bool:
-        """Save missions to disk atomically."""
+        """Save missions to disk atomically with periodic backup."""
         try:
             MISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
             data = {
@@ -298,9 +381,15 @@ class MissionTracker:
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             temp_file.replace(MISSIONS_FILE)
+
+            # Create a backup every ~10 saves (lightweight)
+            self._save_count += 1
+            if self._save_count % 10 == 0:
+                self.create_backup()
+
             return True
         except Exception as e:
-            print(f"[MISSIONS] Save error: {e}")
+            logger.error("Missions save failed: %s", e)
             return False
 
     def create_mission(
@@ -456,11 +545,26 @@ class MissionTracker:
                             milestone.completed_at = time.time()
 
                         # Check if mission is complete
-                        mission.calculate_progress()
                         if mission.calculate_progress() >= 1.0:
                             mission.status = "completed"
                             mission.completed_at = time.time()
 
+                        self._save_missions()
+                        return True
+            return False
+
+    def skip_task(self, mission_id: str, task_id: str) -> bool:
+        """Mark a task as skipped."""
+        with self._lock:
+            mission = self._missions.get(mission_id)
+            if not mission:
+                return False
+
+            for milestone in mission.milestones:
+                for task in milestone.tasks:
+                    if task.id == task_id:
+                        task.status = "skipped"
+                        task.completed_at = time.time()
                         self._save_missions()
                         return True
             return False
