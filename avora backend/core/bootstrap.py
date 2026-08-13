@@ -138,4 +138,19 @@ class CoreBootstrap:
                     logger.debug("%s engine stop error: %s", name, e)
 
 
-__all__ = ["CoreBootstrap"]
+# ============================================================
+# SINGLETON ACCESSOR
+# ============================================================
+
+def get_bootstrap() -> CoreBootstrap:
+    """
+    Get the shared CoreBootstrap instance.
+
+    CoreBootstrap is already a singleton via __new__, so this simply
+    returns the shared instance. Provided as the canonical public
+    accessor used by main.py (mirrors get_*_engine() elsewhere).
+    """
+    return CoreBootstrap()
+
+
+__all__ = ["CoreBootstrap", "get_bootstrap"]

@@ -12,9 +12,15 @@ Handles web browsing operations:
 import os
 import re
 import logging
+import subprocess
 from typing import Dict, Any, Optional
 from urllib.parse import quote_plus
 import webbrowser
+
+try:
+    from playwright.sync_api import sync_playwright
+except Exception:  # pragma: no cover
+    sync_playwright = None
 
 from skills.skill_base import BaseSkill, register_skill
 
@@ -128,6 +134,45 @@ class BrowserSkill(BaseSkill):
         
         return {"success": False, "message": "No valid actions", "results": results}
     
+    def open_visible_browser(self, url: str, browser_name: str = "brave") -> Dict[str, Any]:
+        """Open a real visible browser window with Playwright when available."""
+        if not url:
+            return {"success": False, "message": "No URL provided"}
+
+        browser_names = [browser_name.lower(), "brave", "chrome", "chromium"]
+        try:
+            if sync_playwright is not None:
+                with sync_playwright() as p:
+                    browser = None
+                    for name in browser_names:
+                        try:
+                            browser = p.chromium.launch(channel=name, headless=False)
+                            break
+                        except Exception:
+                            continue
+                    if browser is None:
+                        for name in browser_names:
+                            try:
+                                browser = p.chromium.launch(headless=False)
+                                break
+                            except Exception:
+                                continue
+                    if browser is None:
+                        raise RuntimeError("No Playwright browser could be launched")
+                    page = browser.new_page()
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    browser.contexts[0].pages[0].bring_to_front()
+                    return {"success": True, "message": f"Opened {url} in visible {browser_name} browser"}
+        except Exception as exc:
+            logger.warning("Playwright browser launch failed, falling back to default browser: %s", exc)
+
+        try:
+            webbrowser.open(url)
+            return {"success": True, "message": f"Opening: {url}"}
+        except Exception as e:
+            logger.error(f"Failed to open URL {url}: {e}")
+            return {"success": False, "message": f"Failed to open: {e}"}
+
     def _web_search(self, query: str) -> Dict[str, Any]:
         """Perform a web search."""
         if not query:
@@ -137,8 +182,7 @@ class BrowserSkill(BaseSkill):
         url = f"https://www.google.com/search?q={encoded_query}"
         
         try:
-            webbrowser.open(url)
-            return {"success": True, "message": f"Searching for: {query}"}
+            return self.open_visible_browser(url)
         except Exception as e:
             logger.error(f"Web search failed: {e}")
             return {"success": False, "message": f"Failed to open search: {e}"}
@@ -149,8 +193,7 @@ class BrowserSkill(BaseSkill):
             return {"success": False, "message": "No URL provided"}
         
         try:
-            webbrowser.open(url)
-            return {"success": True, "message": f"Opening: {url}"}
+            return self.open_visible_browser(url)
         except Exception as e:
             logger.error(f"Failed to open URL {url}: {e}")
             return {"success": False, "message": f"Failed to open: {e}"}
