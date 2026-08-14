@@ -856,7 +856,7 @@ class MainWindow(QWidget):
         )
 
         header_title = QLabel(
-            "AI Friend"
+            "AVORA"
         )
 
         header_title.setObjectName(

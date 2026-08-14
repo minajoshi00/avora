@@ -1,4 +1,4 @@
-"""
+﻿"""
 ============================================================
 AVORA Browser Skill
 ============================================================
@@ -63,7 +63,7 @@ class BrowserSkill(BaseSkill):
         ]
     
     def plan(self, intent: str, params: Dict[str, Any],
-             context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+              context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create plan for web/browser operations."""
         target = params.get("target", "")
         entities = params.get("entities", {})
@@ -197,6 +197,133 @@ class BrowserSkill(BaseSkill):
         except Exception as e:
             logger.error(f"Failed to open URL {url}: {e}")
             return {"success": False, "message": f"Failed to open: {e}"}
+
+    def extract_youtube_video_info(self, url: str) -> Dict[str, Any]:
+        """Extract title, upload date, and view count from a YouTube video URL."""
+        if not url:
+            return {"success": False, "message": "No URL provided"}
+        
+        if sync_playwright is None:
+            return {"success": False, "message": "Playwright not available"}
+        
+        try:
+            with sync_playwright() as p:
+                browser = None
+                for name in ["brave", "chrome", "chromium"]:
+                    try:
+                        browser = p.chromium.launch(channel=name, headless=True)
+                        break
+                    except Exception:
+                        continue
+                if browser is None:
+                    browser = p.chromium.launch(headless=True)
+                
+                page = browser.new_page()
+                page.goto(url, wait_until="networkidle", timeout=30000)
+                
+                # Try to extract title
+                title = "I couldn't read that value"
+                try:
+                    # YouTube title selector: h1.title yt-formatted-string
+                    title_element = page.wait_for_selector('h1.title yt-formatted-string', timeout=5000)
+                    title = title_element.inner_text().strip()
+                except Exception:
+                    try:
+                        # Alternative selector
+                        title_element = page.wait_for_selector('#title h1 yt-formatted-string', timeout=5000)
+                        title = title_element.inner_text().strip()
+                    except Exception:
+                        pass
+                
+                # Upload date
+                upload_date = "I couldn't read that value"
+                try:
+                    # YouTube upload date: #info-strings yt-formatted-string
+                    date_element = page.wait_for_selector('#info-strings yt-formatted-string', timeout=5000)
+                    upload_date = date_element.inner_text().strip()
+                except Exception:
+                    try:
+                        # Alternative
+                        date_element = page.wait_for_selector('#date yt-formatted-string', timeout=5000)
+                        upload_date = date_element.inner_text().strip()
+                    except Exception:
+                        pass
+                
+                # View count
+                view_count = "I couldn't read that value"
+                try:
+                    # View count is in the same info-strings, often the first yt-formatted-string
+                    view_elements = page.query_selector_all('#info-strings yt-formatted-string')
+                    if view_elements:
+                        # Sometimes the first is views, second is date
+                        view_count = view_elements[0].inner_text().strip()
+                        # If the view count doesn't contain a number, try the next
+                        if not any(c.isdigit() for c in view_count):
+                            if len(view_elements) > 1:
+                                view_count = view_elements[1].inner_text().strip()
+                    else:
+                        # Try another selector
+                        view_element = page.wait_for_selector('.view-count', timeout=5000)
+                        view_count = view_element.inner_text().strip()
+                except Exception:
+                    pass
+                
+                browser.close()
+                
+                return {
+                    "success": True,
+                    "title": title,
+                    "upload_date": upload_date,
+                    "view_count": view_count,
+                    "message": "Extraction completed"
+                }
+        except Exception as exc:
+            logger.error(f"Failed to extract YouTube info: {exc}")
+            return {"success": False, "message": f"Failed to extract data: {exc}"}
+
+    def extract_general_data(self, url: str, selectors: Dict[str, str]) -> Dict[str, Any]:
+        """Extract data from a URL using provided CSS selectors."""
+        if not url:
+            return {"success": False, "message": "No URL provided"}
+        if not selectors:
+            return {"success": False, "message": "No selectors provided"}
+        
+        if sync_playwright is None:
+            return {"success": False, "message": "Playwright not available"}
+        
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.goto(url, wait_until="networkidle", timeout=30000)
+                
+                extracted = {}
+                for key, selector in selectors.items():
+                    value = "I couldn't read that value"
+                    try:
+                        element = page.wait_for_selector(selector, timeout=5000)
+                        value = element.inner_text().strip()
+                    except Exception:
+                        # Keep the default message
+                        pass
+                    extracted[key] = value
+                
+                browser.close()
+                
+                return {
+                    "success": True,
+                    "data": extracted,
+                    "message": "Extraction completed"
+                }
+        except Exception as exc:
+            logger.error(f"Failed to extract general data: {exc}")
+            return {"success": False, "message": f"Failed to extract data: {exc}"}
+
+    def _scroll_page(self, page, times=2, delay=1000):
+        """Scroll down the page to load more content."""
+        for _ in range(times):
+            page.evaluate("window.scrollBy(0, window.innerHeight)")
+            page.wait_for_timeout(delay)
 
 
 skill = BrowserSkill()
