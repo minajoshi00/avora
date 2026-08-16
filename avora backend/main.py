@@ -296,7 +296,7 @@ class CloseOverlay(QWidget):
         """Position overlay at bottom-center of the given screen."""
         if screen is None:
             return
-        geo = screen.availableGeometry()
+        geo = screen.geometry()
         x = geo.x() + (geo.width() - self.width()) // 2
         y = geo.y() + geo.height() - self.height() - 20
         self.move(x, y)
@@ -667,7 +667,14 @@ class MainWindow(QWidget):
         return self._close_overlay
 
     def _show_close_overlay(self):
-        """Show the close overlay at bottom-center of current screen."""
+        """Show the close overlay at bottom-center of the current screen.
+
+        Called only while a drag is in progress (from ``mousePressEvent`` and
+        ``mouseMoveEvent``), so the ❌ target is visible ONLY during an active
+        drag. It is anchored to the bottom-center of the full screen and is a
+        separate top-level window (never a child of AVORA), so it can never
+        appear over the AVORA interface.
+        """
         overlay = self._create_close_overlay()
         screen = self._get_current_screen()
         if screen is None:
@@ -707,25 +714,23 @@ class MainWindow(QWidget):
     def mouseMoveEvent(self, event):
         """Handle mouse move for both neural background and drag-to-close gesture."""
         if self._is_dragging and self._drag_start_pos is not None:
+            # Move AVORA to global mouse position
             delta = event.pos() - self._drag_start_pos
-            if delta.y() <= 0:
-                self.move(self._drag_start_geom.topLeft())
-                self._hide_close_overlay()
-                self.mouse_pos = event.pos()
-                return
+            new_pos = self.pos() + delta
 
-            raw_dy = delta.y()
-            if raw_dy < 120:
-                resisted_dy = raw_dy * 0.35
-            else:
-                resisted_dy = 120 * 0.35 + (raw_dy - 120) * 0.55
+            # Keep AVORA within screen bounds
+            screen = self._get_current_screen()
+            if screen is not None:
+                geo = screen.geometry()
+                new_pos.setX(max(0, min(new_pos.x(), geo.width() - self.width())))
+                new_pos.setY(max(0, min(new_pos.y(), geo.height() - self.height())))
+            self.move(new_pos)
 
-            new_y = self._drag_start_geom.y() + int(resisted_dy)
-            self.move(self._drag_start_geom.x(), new_y)
+            # The ❌ target stays stationary at bottom-center of screen.
+            # Reposition overlay to bottom-center of current screen regardless of AVORA position.
+            self._show_close_overlay()
 
-            self._update_close_overlay_for_drag(resisted_dy)
-
-            print(f"[GESTURE] Move: raw={raw_dy:.1f}, resisted={resisted_dy:.1f}, threshold={self._drag_threshold}")
+            print(f"[GESTURE] Move: AVORA at {self.pos()}")
 
             self.mouse_pos = event.pos()
             return
@@ -742,18 +747,43 @@ class MainWindow(QWidget):
         self._is_dragging = False
 
         current_geom = self.geometry()
-        drag_distance = current_geom.y() - self._drag_start_geom.y()
 
-        print(f"[GESTURE] Release: drag_distance={drag_distance:.1f}, threshold={self._drag_threshold}")
+        # Detect whether AVORA overlaps the ❌ target at bottom-center of screen
+        dropped_on_target = self._overlaps_close_target(current_geom)
+
+        print(f"[GESTURE] Release: dropped_on_target={dropped_on_target}")
 
         self._hide_close_overlay()
 
-        if drag_distance >= self._drag_threshold:
-            print("[GESTURE] Threshold reached -> CLOSING")
+        if dropped_on_target:
+            print("[GESTURE] Dropped on close target -> CLOSING")
             self._animate_close()
         else:
-            print("[GESTURE] Below threshold -> CANCEL")
+            print("[GESTURE] Released outside target -> CANCEL")
             self._animate_cancel()
+
+    def _overlaps_close_target(self, rect):
+        """Check whether the given AVORA geometry overlaps the ❌ close-target
+        hit area anchored at the bottom-center of the active screen."""
+
+        screen = self._get_current_screen()
+        if screen is None:
+            return False
+
+        geo = screen.geometry()
+        # Centre of the ❌ target: screen_width / 2, screen_height - 60
+        target_cx = geo.x() + geo.width() // 2
+        target_cy = geo.y() + geo.height() - 55
+
+        # Tolerance radius so the user does not need pixel-perfect accuracy
+        radius = 70
+
+        # Use AVORA's own centre and check against the target circle
+        avora_cx = rect.x() + rect.width() // 2
+        avora_cy = rect.y() + rect.height() // 2
+        dx = avora_cx - target_cx
+        dy = avora_cy - target_cy
+        return (dx * dx + dy * dy) <= radius * radius
 
     def _animate_close(self):
         """Animate the window sliding down and close it."""
