@@ -1,0 +1,454 @@
+{
+    "general": {
+        "first_run": true,
+        "language": "en",
+        "startup_enabled": true,
+        "start_minimized": false,
+        "check_for_updates": true
+    },
+    "voice": {
+        "enabled": false,
+        "volume": 1.0,
+        "speed": 1.0,
+        "voice_name": "default",
+        "speak_after_response": true,
+        "speak_while_generating": false,
+        "auto_stop_previous": true,
+        "mute_when_window_minimized": false,
+        "test_voice_text": "Hey brooo, this is a test of my AI Friend voice."
+    },
+    "ai": {
+        "primary_provider": "gemini",
+        "fallback_provider": "groq",
+        "automatic_fallback": true,
+        "temperature": 0.7,
+        "response_length": "balanced",
+        "response_style": "friendly",
+        "command_understanding": true,
+        "show_processing_status": true,
+        "show_provider_status": false,
+        "max_conversation_messages": 12,
+        "request_timeout": 30,
+        "retry_attempts": 2,
+        "retry_delay": 1.5
+    },
+    "memory": {
+        "enabled": true,
+        "auto_save": true,
+        "ask_before_saving": false,
+        "save_important_information": true,
+        "save_preferences": true,
+        "save_projects": true,
+        "save_goals": true,
+        "max_memories": 500,
+        "show_memory_notifications": false
+    },
+    "character": {
+        "enabled": true,
+        "size": 0.5,
+        "always_on_top": false,
+        "eye_tracking": true,
+        "blinking": true,
+        "head_movement": true,
+        "emotions": true,
+        "idle_animation": true,
+        "talking_animation": true,
+        "cursor_tracking": true,
+        "animation_intensity": 1.0,
+        "expression": "idle"
+    },
+    "appearance": {
+        "theme": "dark",
+        "accent_color": "#8B7AFF",
+        "font_size": 14,
+        "animation_intensity": "high",
+        "glass_effect": true,
+        "transparency": 0.95,
+        "compact_mode": false,
+        "show_timestamps": true,
+        "show_message_animations": true,
+        "rounded_corners": true
+    },
+    "privacy": {
+        "confirm_power_actions": true,
+        "confirm_file_deletion": true,
+        "confirm_email_sending": true,
+        "confirm_email_deletion": true,
+        "confirm_system_changes": true,
+        "allow_ai_file_creation": true,
+        "allow_ai_file_opening": true,
+        "allow_ai_file_deletion": false,
+        "allow_ai_system_commands": true,
+        "store_conversation_history": true,
+        "clear_cache_on_exit": false
+    },
+    "power": {
+        "allow_shutdown": true,
+        "allow_restart": true,
+        "allow_sleep": true,
+        "allow_hibernate": true,
+        "allow_lock": true,
+        "confirm_shutdown": true,
+        "confirm_restart": true,
+        "confirm_sleep": true,
+        "confirm_hibernate": true,
+        "confirm_lock": false,
+        "allow_scheduled_actions": true
+    },
+    "gmail": {
+        "enabled": true,
+        "auto_check": false,
+        "check_interval": 300,
+        "recent_email_count": 5,
+        "confirm_send": true,
+        "confirm_delete": true,
+        "default_signature": "",
+        "mark_as_read_after_reading": false
+    },
+    "files": {
+        "enabled": true,
+        "default_folder": "C:\\Users\\minaj\\Documents",
+        "allow_create": true,
+        "allow_open": true,
+        "allow_delete": false,
+        "allow_move": true,
+        "allow_rename": true,
+        "confirm_delete": true,
+        "show_hidden_files": false
+    },
+    "advanced": {
+        "debug_mode": false,
+        "show_api_errors": false,
+        "show_internal_errors": false,
+        "api_timeout": 30,
+        "max_log_files": 5,
+        "enable_logging": true,
+        "enable_crash_recovery": true,
+        "developer_mode": false
+    },
+    "system": {
+        "settings_version": 1,
+        "last_updated": "2026-07-29T07:05:21",
+        "last_backup": null
+    },
+    "safety": {
+        "permission_level": 3,
+        "enable_panic_hotkey": true,
+        "panic_hotkey": "Ctrl+Alt+F12",
+        "confirm_dangerous_actions": true,
+        "sandbox_untrusted_scripts": true,
+        "redact_sensitive_data": true,
+        "activity_logging": true,
+        "max_activity_log_entries": 500,
+        "auto_clear_activity_log_days": 7
+    },
+    "clipboard": {
+        "enabled": true,
+        "max_history": 100,
+        "save_images": true,
+        "save_links": true,
+        "save_code": true,
+        "exclude_sensitive": true,
+        "sync_to_cloud": false,
+        "preview_enabled": true
+    },
+    "automation": {
+        "enabled": true,
+        "max_concurrent_tasks": 3,
+        "auto_confirm_safe_actions": false,
+        "retry_failed_steps": true,
+        "max_retries_per_step": 2,
+        "step_timeout_seconds": 30,
+        "show_step_progress": true,
+        "allow_autonomous_mode": false,
+        "require_confirmation_for": [
+            "file_delete",
+            "system_shutdown",
+            "git_push",
+            "email_send"
+        ]
+    },
+    "character_custom": {
+        "gender": "neutral",
+        "style": "robotic",
+        "skin_color": "#4A90D9",
+        "hair_style": "default",
+        "hair_color": "#2C3E50",
+        "eye_color": "#3498DB",
+        "outfit": "casual",
+        "accessories": [],
+        "voice_profile": "default",
+        "weather_clothing": true,
+        "time_based_outfit": true
+    },
+    "environment": {
+        "enabled": true,
+        "auto_detect_location": true,
+        "default_location": "",
+        "api_provider": "openweather",
+        "update_interval_minutes": 30,
+        "cache_duration_minutes": 60,
+        "adapt_character": true,
+        "adapt_voice": true,
+        "adapt_behavior": true,
+        "show_weather_notifications": true
+    },
+    "modes": {
+        "current_mode": "chat",
+        "auto_detect_mode": true,
+        "coding": {
+            "enabled": true,
+            "personality": "coding_expert",
+            "tools": [
+                "code_reader",
+                "terminal",
+                "git",
+                "debugger"
+            ],
+            "auto_save": true,
+            "show_line_numbers": true
+        },
+        "student": {
+            "enabled": true,
+            "personality": "friendly",
+            "tools": [
+                "flashcards",
+                "quizzes",
+                "study_plans"
+            ],
+            "adaptive_difficulty": true,
+            "track_progress": true
+        },
+        "gamer": {
+            "enabled": true,
+            "personality": "gamer",
+            "tools": [
+                "screen_reader",
+                "coach",
+                "object_detection"
+            ],
+            "permission_level": 2
+        },
+        "productivity": {
+            "enabled": true,
+            "personality": "professional",
+            "tools": [
+                "file_organizer",
+                "calendar",
+                "macros"
+            ],
+            "focus_hours": true,
+            "app_blocker": true
+        }
+    },
+    "personality": {
+        "current_personality": "friendly",
+        "friendly_bro": {
+            "name": "Friendly Bro",
+            "description": "Casual, slang-heavy, hype friend vibes",
+            "tone": "casual",
+            "emoji_usage": 0.9,
+            "slang_usage": 0.9,
+            "proactivity": 0.6,
+            "formality": 0.1
+        },
+        "professional": {
+            "name": "Professional",
+            "description": "Polished, efficient, business-like",
+            "tone": "professional",
+            "emoji_usage": 0.2,
+            "slang_usage": 0.0,
+            "proactivity": 0.4,
+            "formality": 0.9
+        },
+        "calm_companion": {
+            "name": "Calm Companion",
+            "description": "Peaceful, zen-like, supportive",
+            "tone": "calm",
+            "emoji_usage": 0.3,
+            "slang_usage": 0.1,
+            "proactivity": 0.3,
+            "formality": 0.3
+        },
+        "funny_friend": {
+            "name": "Funny Friend",
+            "description": "Jokes, memes, playful humor",
+            "tone": "playful",
+            "emoji_usage": 0.8,
+            "slang_usage": 0.5,
+            "proactivity": 0.5,
+            "formality": 0.1,
+            "humor_level": 0.9
+        },
+        "study_buddy": {
+            "name": "Study Buddy",
+            "description": "Patient tutor, encouraging teacher",
+            "tone": "educational",
+            "emoji_usage": 0.5,
+            "slang_usage": 0.2,
+            "proactivity": 0.7,
+            "formality": 0.4,
+            "humor_level": 0.4
+        },
+        "coding_partner": {
+            "name": "Coding Partner",
+            "description": "Senior dev, technical but friendly",
+            "tone": "technical",
+            "emoji_usage": 0.3,
+            "slang_usage": 0.3,
+            "proactivity": 0.5,
+            "formality": 0.3
+        },
+        "custom": {
+            "name": "Custom",
+            "description": "Fully customizable personality",
+            "tone": "custom",
+            "emoji_usage": 0.5,
+            "slang_usage": 0.3,
+            "proactivity": 0.5,
+            "formality": 0.5
+        }
+    },
+    "gaming": {
+        "enabled": false,
+        "screen_capture_fps": 5,
+        "object_detection": false,
+        "voice_tips": true,
+        "mouse_control": false,
+        "keyboard_control": false,
+        "supported_games": [
+            "minecraft",
+            "roblox"
+        ],
+        "permission_level": 2,
+        "panic_stop": true
+    },
+    "student": {
+        "enabled": true,
+        "study_plans": true,
+        "flashcards": true,
+        "quizzes": true,
+        "adaptive_difficulty": true,
+        "mock_exams": true,
+        "weak_topic_tracking": true,
+        "progress_tracking": true,
+        "focus_timer": true,
+        "revision_support": true,
+        "daily_goal_minutes": 30
+    },
+    "developer": {
+        "enabled": false,
+        "project_awareness": true,
+        "bug_detection": true,
+        "terminal_diagnostics": true,
+        "test_execution": true,
+        "git_integration": true,
+        "code_flowcharts": true,
+        "ui_to_code": true,
+        "persistent_workspaces": true
+    },
+    "notifications": {
+        "enabled": true,
+        "email_notifications": true,
+        "reminder_notifications": true,
+        "automation_notifications": true,
+        "weather_notifications": true,
+        "do_not_disturb": false,
+        "quiet_hours_start": "22:00",
+        "quiet_hours_end": "08:00",
+        "notification_sound": true,
+        "notification_position": "bottom_right"
+    },
+    "power_automation": {
+        "allow_automation": true,
+        "energy_aware_scheduling": true,
+        "cpu_threshold": 80,
+        "ram_threshold": 70,
+        "battery_threshold": 20,
+        "auto_pause_when_battery_low": true,
+        "auto_pause_when_high_cpu": true
+    },
+    "offline": {
+        "enabled": true,
+        "local_ai_fallback": true,
+        "local_voice": true,
+        "local_file_ops": true,
+        "local_computer_control": true,
+        "show_mode_indicator": true,
+        "privacy_mode": false
+    },
+    "voice_extended": {
+        "wake_word": "hey avora",
+        "wake_word_sensitivity": 0.7,
+        "continuous_listening": false,
+        "voice_interruption": true,
+        "multiple_voices": true,
+        "emotion_aware_tone": true,
+        "listening_state_indicator": true,
+        "speaking_state_indicator": true,
+        "available_voices": {
+            "en-US-AriaNeural": "Aria (Female)",
+            "en-US-JennyNeural": "Jenny (Female)",
+            "en-US-GuyNeural": "Guy (Male)",
+            "en-US-ChristopherNeural": "Christopher (Male)",
+            "en-GB-SoniaNeural": "Sonia (Female)",
+            "en-GB-RyanNeural": "Ryan (Male)",
+            "en-IN-NeerjaNeural": "Neerja (Female)",
+            "en-IN-PrabhatNeural": "Prabhat (Male)"
+        }
+    },
+    "meetings": {
+        "enabled": false,
+        "transcription": false,
+        "auto_summarize": true,
+        "extract_action_items": true,
+        "create_notes": true,
+        "permission_required": true,
+        "supported_formats": [
+            "mp3",
+            "wav",
+            "m4a"
+        ]
+    },
+    "activity_awareness": {
+        "enabled": true,
+        "check_interval_seconds": 5,
+        "idle_threshold_minutes": 3,
+        "proactive_notifications": true,
+        "proactive_cooldown_minutes": 15,
+        "show_activity_notifications": true,
+        "notify_on_activity_change": false,
+        "long_session_warning_minutes": 60,
+        "break_reminder_enabled": true,
+        "break_reminder_interval_minutes": 45,
+        "privacy_mode": false
+    },
+    "companion": {
+        "enabled": true,
+        "emotion_engine": true,
+        "proactive_messages": true,
+        "silent_awareness": true,
+        "context_tracking": true,
+        "goal_tracking": true,
+        "achievement_celebrations": true,
+        "break_reminders": true,
+        "anti_annoyance": true,
+        "personality_influence": true,
+        "max_proactive_per_hour": 4,
+        "cooldown_multiplier": 1.0,
+        "intensity_multiplier": 1.0,
+        "detailed_analysis_interval_seconds": 60
+    },
+    "timer": {
+        "enabled": true,
+        "notification_on_finish": true,
+        "notification_sound": true,
+        "notification_volume": 0.8,
+        "notification_sound_path": "",
+        "emotion_on_finish": "surprised",
+        "speak_on_finish": true,
+        "auto_restart": false,
+        "auto_restart_minutes": 0,
+        "default_duration_minutes": 25
+    }
+}

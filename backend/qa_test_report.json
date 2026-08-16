@@ -1,0 +1,301 @@
+{
+  "timestamp": "2026-08-12T09:32:41.733528",
+  "summary": {
+    "passed": 49,
+    "failed": 8,
+    "skipped": 0,
+    "performance": {
+      "startup_time": {
+        "value": 8036.754846572876,
+        "unit": "ms"
+      },
+      "memory_usage": {
+        "value": 234.390625,
+        "unit": "MB"
+      },
+      "cpu_usage": {
+        "value": 73.5,
+        "unit": "%"
+      },
+      "launcher_search": {
+        "value": 2.0210742950439453,
+        "unit": "ms"
+      },
+      "context_retrieval": {
+        "value": 2308.701515197754,
+        "unit": "ms"
+      },
+      "intelligence_processing": {
+        "value": 4.063129425048828,
+        "unit": "ms"
+      }
+    },
+    "failed_tests": [
+      {
+        "name": "AI processing: 'Hello'",
+        "detail": "Not processing"
+      },
+      {
+        "name": "Search: paint",
+        "detail": "No results found"
+      },
+      {
+        "name": "List folder",
+        "detail": "Got: \ud83d\udcc1 Contents of:\nC:\\Users\\minaj\n\n\ud83d\udcc1 .cache\n\ud83d\udcc1 .claude\n\ud83d\udcc1 .cline\n\ud83d\udcc1 .config\n\ud83d\udcc1 .copilot\n\ud83d\udcc1 .cursor\n\ud83d\udcc1 .gemini\n\ud83d\udcc1 .local\n\ud83d\udcc1 .trae\n\ud83d\udcc1 .vscode\n\ud83d\udcc1 .vscode-shared\n\ud83d\udcc1 .Wurst encryption\n\ud83d\udcc1 AppData\n\ud83d\udcc1 Application Data\n\ud83d\udcc1 Contacts\n\ud83d\udcc1 Cookies\n\ud83d\udcc1 Desktop\n\ud83d\udcc1 Documents\n\ud83d\udcc1 Downloads\n\ud83d\udcc1 Favorites\n\ud83d\udcc1 IntelGraphicsProfiles\n\ud83d\udcc1 Links\n\ud83d\udcc1 Local Settings\n\ud83d\udcc1 Music\n\ud83d\udcc1 My Documents\n\ud83d\udcc1 NetHood\n\ud83d\udcc1 OneDrive\n\ud83d\udcc1 PrintHood\n\ud83d\udcc1 Recent\n\ud83d\udcc1 Saved Games\n\ud83d\udcc1 Searches\n\ud83d\udcc1 SendTo\n\ud83d\udcc1 Start Menu\n\ud83d\udcc1 Templates\n\ud83d\udcc1 Videos\n\ud83d\udcc4 .claude.json\n\ud83d\udcc4 .git-for-windows-updater\n\ud83d\udcc4 .gitconfig\n\ud83d\udcc4 .python_history\n\ud83d\udcc4 NTUSER.DAT\n\ud83d\udcc4 ntuser.dat.LOG1\n\ud83d\udcc4 ntuser.dat.LOG2\n\ud83d\udcc4 NTUSER.DAT{60197a3e-3901-11f1-a70f-5c879cc0a68d}.TM.blf\n\ud83d\udcc4 NTUSER.DAT{60197a3e-3901-11f1-a70f-5c879cc0a68d}.TMContainer00000000000000000001.regtrans-ms\n\ud83d\udcc4 NTUSER.DAT{60197a3e-3901-11f1-a70f-5c879cc0a68d}.TMContainer00000000000000000002.regtrans-ms\n\ud83d\udcc4 ntuser.ini\n"
+      },
+      {
+        "name": "File operations",
+        "detail": "'charmap' codec can't encode character '\\U0001f4c1' in position 26: character maps to <undefined>"
+      },
+      {
+        "name": "Nonexistent file",
+        "detail": "Access denied: Path outside allowed directories (C:\\nonexistent\\file\\that\\doesnt\\exist.txt)"
+      },
+      {
+        "name": "Rapid new chat",
+        "detail": "libshiboken: Internal C++ object (PySide6.QtWidgets.QLabel) already deleted."
+      },
+      {
+        "name": "CPU usage",
+        "detail": "73.5% (high)"
+      },
+      {
+        "name": "Context retrieval speed",
+        "detail": "2308.7ms (slow)"
+      }
+    ]
+  },
+  "passed_tests": [
+    {
+      "name": "Main window created",
+      "detail": ""
+    },
+    {
+      "name": "Window title",
+      "detail": "'AVORA AI'"
+    },
+    {
+      "name": "Window visible",
+      "detail": ""
+    },
+    {
+      "name": "Window size",
+      "detail": "1200x800"
+    },
+    {
+      "name": "Sidebar exists",
+      "detail": ""
+    },
+    {
+      "name": "Chat area exists",
+      "detail": ""
+    },
+    {
+      "name": "Input box exists",
+      "detail": ""
+    },
+    {
+      "name": "Send button exists",
+      "detail": ""
+    },
+    {
+      "name": "Mic button exists",
+      "detail": ""
+    },
+    {
+      "name": "Character created",
+      "detail": ""
+    },
+    {
+      "name": "Status label exists",
+      "detail": ""
+    },
+    {
+      "name": "Welcome message present",
+      "detail": ""
+    },
+    {
+      "name": "New chat button enabled",
+      "detail": ""
+    },
+    {
+      "name": "Voice button exists",
+      "detail": ""
+    },
+    {
+      "name": "Settings button exists",
+      "detail": ""
+    },
+    {
+      "name": "Attach button exists",
+      "detail": ""
+    },
+    {
+      "name": "Chat sidebar exists",
+      "detail": ""
+    },
+    {
+      "name": "New chat clears messages",
+      "detail": ""
+    },
+    {
+      "name": "Window resize",
+      "detail": "1000x750"
+    },
+    {
+      "name": "Window minimize",
+      "detail": ""
+    },
+    {
+      "name": "Window restore",
+      "detail": ""
+    },
+    {
+      "name": "AI response: 'Hello'",
+      "detail": ""
+    },
+    {
+      "name": "AI processing: 'What can you do?'",
+      "detail": ""
+    },
+    {
+      "name": "AI response: 'What can you do?'",
+      "detail": ""
+    },
+    {
+      "name": "AI processing: 'Tell me a joke.'",
+      "detail": ""
+    },
+    {
+      "name": "AI response: 'Tell me a joke.'",
+      "detail": ""
+    },
+    {
+      "name": "AI processing: 'Explain Python in one sentence.'",
+      "detail": ""
+    },
+    {
+      "name": "AI response: 'Explain Python in one sentence.'",
+      "detail": ""
+    },
+    {
+      "name": "AI processing: 'What time is it?'",
+      "detail": ""
+    },
+    {
+      "name": "AI response: 'What time is it?'",
+      "detail": ""
+    },
+    {
+      "name": "Memory save",
+      "detail": ""
+    },
+    {
+      "name": "Memory retrieval",
+      "detail": "Found 'Python' in memories"
+    },
+    {
+      "name": "Memory search",
+      "detail": "Found 1 result(s)"
+    },
+    {
+      "name": "Memory cleanup",
+      "detail": ""
+    },
+    {
+      "name": "Search: notepad",
+      "detail": "Found 1 result(s)"
+    },
+    {
+      "name": "Search: calculator",
+      "detail": "Found 1 result(s)"
+    },
+    {
+      "name": "Search: explorer",
+      "detail": "Found 2 result(s)"
+    },
+    {
+      "name": "Search: settings",
+      "detail": "Found 1 result(s)"
+    },
+    {
+      "name": "Search: taskmgr",
+      "detail": "Found 1 result(s)"
+    },
+    {
+      "name": "Launch: notepad",
+      "detail": ""
+    },
+    {
+      "name": "Nonexistent app search",
+      "detail": "Gracefully returned empty"
+    },
+    {
+      "name": "Empty message",
+      "detail": "Gracefully ignored"
+    },
+    {
+      "name": "Long message",
+      "detail": "Gracefully rejected"
+    },
+    {
+      "name": "Rapid resize (10x)",
+      "detail": "No crash"
+    },
+    {
+      "name": "Rapid empty sends (20x)",
+      "detail": "No crash"
+    },
+    {
+      "name": "Memory usage",
+      "detail": "234.4 MB"
+    },
+    {
+      "name": "Launcher search speed",
+      "detail": "2.0ms"
+    },
+    {
+      "name": "Intelligence processing",
+      "detail": "4.1ms"
+    },
+    {
+      "name": "Clean window close",
+      "detail": ""
+    }
+  ],
+  "failed_tests": [
+    {
+      "name": "AI processing: 'Hello'",
+      "detail": "Not processing"
+    },
+    {
+      "name": "Search: paint",
+      "detail": "No results found"
+    },
+    {
+      "name": "List folder",
+      "detail": "Got: \ud83d\udcc1 Contents of:\nC:\\Users\\minaj\n\n\ud83d\udcc1 .cache\n\ud83d\udcc1 .claude\n\ud83d\udcc1 .cline\n\ud83d\udcc1 .config\n\ud83d\udcc1 .copilot\n\ud83d\udcc1 .cursor\n\ud83d\udcc1 .gemini\n\ud83d\udcc1 .local\n\ud83d\udcc1 .trae\n\ud83d\udcc1 .vscode\n\ud83d\udcc1 .vscode-shared\n\ud83d\udcc1 .Wurst encryption\n\ud83d\udcc1 AppData\n\ud83d\udcc1 Application Data\n\ud83d\udcc1 Contacts\n\ud83d\udcc1 Cookies\n\ud83d\udcc1 Desktop\n\ud83d\udcc1 Documents\n\ud83d\udcc1 Downloads\n\ud83d\udcc1 Favorites\n\ud83d\udcc1 IntelGraphicsProfiles\n\ud83d\udcc1 Links\n\ud83d\udcc1 Local Settings\n\ud83d\udcc1 Music\n\ud83d\udcc1 My Documents\n\ud83d\udcc1 NetHood\n\ud83d\udcc1 OneDrive\n\ud83d\udcc1 PrintHood\n\ud83d\udcc1 Recent\n\ud83d\udcc1 Saved Games\n\ud83d\udcc1 Searches\n\ud83d\udcc1 SendTo\n\ud83d\udcc1 Start Menu\n\ud83d\udcc1 Templates\n\ud83d\udcc1 Videos\n\ud83d\udcc4 .claude.json\n\ud83d\udcc4 .git-for-windows-updater\n\ud83d\udcc4 .gitconfig\n\ud83d\udcc4 .python_history\n\ud83d\udcc4 NTUSER.DAT\n\ud83d\udcc4 ntuser.dat.LOG1\n\ud83d\udcc4 ntuser.dat.LOG2\n\ud83d\udcc4 NTUSER.DAT{60197a3e-3901-11f1-a70f-5c879cc0a68d}.TM.blf\n\ud83d\udcc4 NTUSER.DAT{60197a3e-3901-11f1-a70f-5c879cc0a68d}.TMContainer00000000000000000001.regtrans-ms\n\ud83d\udcc4 NTUSER.DAT{60197a3e-3901-11f1-a70f-5c879cc0a68d}.TMContainer00000000000000000002.regtrans-ms\n\ud83d\udcc4 ntuser.ini\n"
+    },
+    {
+      "name": "File operations",
+      "detail": "'charmap' codec can't encode character '\\U0001f4c1' in position 26: character maps to <undefined>"
+    },
+    {
+      "name": "Nonexistent file",
+      "detail": "Access denied: Path outside allowed directories (C:\\nonexistent\\file\\that\\doesnt\\exist.txt)"
+    },
+    {
+      "name": "Rapid new chat",
+      "detail": "libshiboken: Internal C++ object (PySide6.QtWidgets.QLabel) already deleted."
+    },
+    {
+      "name": "CPU usage",
+      "detail": "73.5% (high)"
+    },
+    {
+      "name": "Context retrieval speed",
+      "detail": "2308.7ms (slow)"
+    }
+  ],
+  "skipped_tests": []
+}

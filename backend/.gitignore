@@ -1,0 +1,60 @@
+# ============================================================
+# AVORA AI - .gitignore
+# ============================================================
+
+# --- Secrets & Credentials ---
+.env
+credentials.json
+token.json
+*.token
+*_token.json
+*_key*
+*secret*
+*credential*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# --- Virtual Environments ---
+.venv/
+venv/
+env/
+.env/
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+*.log
+
+# --- Build Artifacts ---
+dist/
+build/
+*.spec
+generated_images/
+
+# --- User Data ---
+settings_backups/
+conversations.json
+memories.json
+reminders.json
+avora_clipboard.json
+learning_profile.json
+
+# --- Development Artifacts ---
+check_output.txt
+import_check_results.txt
