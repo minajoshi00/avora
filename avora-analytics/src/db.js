@@ -1,7 +1,7 @@
 /**
  * AVORA Analytics — Database layer
  *
- * Real persistent storage using SQLite (better-sqlite3).
+ * Real persistent storage using sql.js (pure JavaScript SQLite).
  * This is the single source of truth for ALL analytics metrics.
  *
  * Schema:
@@ -14,54 +14,100 @@
  *  - Real timestamps drive all daily/weekly/monthly aggregates.
  */
 
-import Database from 'better-sqlite3';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = dirname(fileURLToWord(import.meta.url));
 const DATA_DIR = join(__dirname, '..', 'data');
 mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_PATH = process.env.AVORA_ANALYTICS_DB || join(DATA_DIR, 'analytics.db');
 
-export const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+let db = null;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS events (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_key   TEXT UNIQUE,                         -- idempotency key (dedup)
-    type        TEXT NOT NULL,                       -- 'pageview' | 'download' | 'feedback' | ...
-    user_id     TEXT,                                -- anonymous
-    visitor_id  TEXT,                                -- anonymous session-scoped
-    value       REAL DEFAULT 0,                      -- numeric payload (e.g. rating)
-    props       TEXT DEFAULT '{}',                   -- JSON metadata (platform, version, ...)
-    ip          TEXT,                                -- truncated/optional, never shown in UI
-    country     TEXT,                                -- optional, derived server-side only
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
-  );
+/**
+ * Initialize the database.
+ * Must be called before using any db operations.
+ * @returns {Promise<SQL.Database>} The initialized database instance
+ */
+export async function initDb() {
+  const SQL = (await import('sql.js')).default;
+  db = new SQL();
 
-  CREATE INDEX IF NOT EXISTS idx_events_type       ON events(type);
-  CREATE INDEX IF NOT EXISTS idx_events_created    ON events(created_at);
-  CREATE INDEX IF NOT EXISTS idx_events_user       ON events(user_id);
-  CREATE INDEX IF NOT EXISTS idx_events_visitor    ON events(visitor_id);
+  // Load existing DB if present
+  if (existsSync(DB_PATH)) {
+    const buffer = readFileSync(DB_PATH);
+    db = new SQL(buffer);
+  }
 
-  CREATE TABLE IF NOT EXISTS daily_snapshots (
-    date        TEXT NOT NULL,                       -- 'YYYY-MM-DD'
-    type        TEXT NOT NULL,
-    count       INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (date, type)
-  );
+  // Create tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS events (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_key   TEXT UNIQUE,
+      type        TEXT NOT NULL,
+      user_id     TEXT,
+      visitor_id  TEXT,
+      value       REAL DEFAULT 0,
+      props       TEXT DEFAULT '{}',
+      ip          TEXT,
+      country     TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 
-  CREATE TABLE IF NOT EXISTS baseline (
-    id                  INTEGER PRIMARY KEY CHECK (id = 1),  -- single row, enforced
-    visitors_offset    INTEGER NOT NULL DEFAULT 0,           -- additive historical baseline
-    downloads_offset   INTEGER NOT NULL DEFAULT 0,           -- additive historical baseline
-    applied_at         TEXT                                            -- UTC timestamp of application
-  );
-`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_visitor ON events(visitor_id)`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_snapshots (
+      date        TEXT NOT NULL,
+      type        TEXT NOT NULL,
+      count       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (date, type)
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS baseline (
+      id                  INTEGER PRIMARY KEY CHECK (id = 1),
+      visitors_offset    INTEGER NOT NULL DEFAULT 0,
+      downloads_offset   INTEGER NOT NULL DEFAULT 0,
+      applied_at         TEXT
+    )
+  `);
+
+  // Persist DB to disk every 5 seconds
+  setInterval(() => {
+    if (db) {
+      const data = db.export();
+      const buffer = Buffer.from(data);
+      writeFileSync(DB_PATH, buffer);
+    }
+  }, 5000);
+
+  // Persist on process exit
+  process.on('exit', () => {
+    if (db) {
+      const data = db.export();
+      const buffer = Buffer.from(data);
+      writeFileSync(DB_PATH, buffer);
+    }
+  });
+
+  return db;
+}
+
+/**
+ * Get the database instance. Throws if not initialized.
+ */
+export function getDb() {
+  if (!db) throw new Error('Database not initialized. Call initDb() first.');
+  return db;
+}
 
 export const EVENT_TABLE = 'events';
-export default db;
+export default { getDb, initDb };

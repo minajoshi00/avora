@@ -14,10 +14,12 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import { hasValidSession } from './lib/admin';
 import { initAnalytics, trackPageView } from './lib/analytics';
 import { getAnalyticsEnabled, getAnalyticsConsent } from './lib/storage';
+import { MaintenancePage } from './components/MaintenancePage';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.hash);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -38,13 +40,40 @@ export default function App() {
     }
   }, []);
 
-  // Track page views on hash/route changes (real events, consent-gated).
+  // Check maintenance mode on mount
   useEffect(() => {
-    const onRoute = () => trackPageView(window.location.hash || window.location.pathname);
-    window.addEventListener('hashchange', onRoute);
-    return () => window.removeEventListener('hashchange', onRoute);
-  }, []);
+    const checkMaintenance = async () => {
+      try {
+        const res = await fetch('/api/admin/maintenance/status', { cache: 'no-store' });
+        const data = await res.json();
+        setMaintenanceMode(data.maintenanceMode || false);
+        // If coming from admin and turning off maintenance, reload
+        if (!data.maintenanceMode && currentPath?.startsWith('#/admin')) {
+          window.location.reload();
+        }
+      } catch {
+        setMaintenanceMode(false);
+      }
+    };
 
+    checkMaintenance();
+  }, [currentPath]);
+
+  // Auto-reload if maintenance completes while on the main page
+  useEffect(() => {
+    if (!maintenanceMode) {
+      const timer = setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [maintenanceMode]);
+
+  if (maintenanceMode) {
+    return <MaintenancePage />;
+  }
+
+  // Admin route logic
   const isAdminRoute = currentPath === '#/admin' || currentPath.startsWith('#/admin/');
   const isDashboardRoute = currentPath.startsWith('#/admin/') && currentPath !== '#/admin';
 
@@ -66,7 +95,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <StrictMode>
       <InteractiveBackground />
       <CursorGlow />
       <CustomCursor />
@@ -79,6 +108,6 @@ export default function App() {
         <Home />
         <Footer />
       </div>
-    </>
+    </StrictMode>
   );
 }

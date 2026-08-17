@@ -13,10 +13,11 @@ import { DownloadAnalyticsSection } from '../components/admin/DownloadAnalyticsS
 import { SystemHealthSection } from '../components/admin/SystemHealthSection';
 import { ChangelogManager } from '../components/admin/ChangelogManager';
 import { SearchSection } from '../components/admin/SearchSection';
+import { MaintenanceManagementPanel } from '../components/admin/MaintenanceManagementPanel';
 import {
-  LayoutDashboard, Users, MessageSquare, Lightbulb, Bug, Download, Activity,
-  RefreshCw, Search, LogOut, ChevronRight, BarChart3, User, Shield,
-  History,
+        LayoutDashboard, Users, MessageSquare, Lightbulb, Bug, Download, Activity,
+        RefreshCw, Search, LogOut, ChevronRight, BarChart3, User, Shield,
+        History, Wrench,
 } from 'lucide-react';
 import { useAnalyticsSummary } from '../hooks/useAnalyticsSummary';
 import { LoadingState, ErrorState, EmptyState } from '../components/admin/AnalyticsStates';
@@ -25,7 +26,7 @@ import { formatCount, formatRate, type Range } from '../lib/analytics-client';
 type Section =
   | 'overview' | 'users' | 'feedback' | 'features' | 'bugs'
   | 'downloads' | 'health' | 'changelog' | 'updates' | 'search'
-  | 'analytics' | 'visitors';
+  | 'analytics' | 'visitors' | 'maintenance';
 
 const sections: { id: Section; label: string; icon: any }[] = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
@@ -39,6 +40,7 @@ const sections: { id: Section; label: string; icon: any }[] = [
   { id: 'changelog', label: '📜 Logs', icon: History },
   { id: 'updates', label: '📈 Charts', icon: RefreshCw },
   { id: 'search', label: 'Recent Activity', icon: Search },
+  { id: 'maintenance', label: '🔧 Maintenance Mode', icon: Wrench },
 ];
 
 const sectionLabels: Record<Section, string> = {
@@ -54,6 +56,7 @@ const sectionLabels: Record<Section, string> = {
   changelog: 'Logs',
   updates: 'Charts',
   search: 'Recent Activity',
+  maintenance: 'Maintenance Mode',
 };
 
 export default function AdminDashboardPage() {
@@ -203,6 +206,7 @@ function renderSection(section: Section) {
     case 'search': return <SearchSection />;
     case 'analytics': return <AnalyticsSection />;
     case 'visitors': return <VisitorsSection />;
+    case 'maintenance': return <MaintenanceManagementPanel />;
     default: return <OverviewSection />;
   }
 }
@@ -353,7 +357,7 @@ function MiniBars({ labels, values }: { labels: string[]; values: number[] }) {
   return (
     <div className="h-48 flex items-end justify-between gap-2">
       {values.map((v, i) => (
-        <div key={labels[i]} className="flex-1 flex flex-col items-center">
+        <div key={labels[i]} className="flex flex-col items-center">
           <div className="w-full rounded-t bg-gradient-to-t from-blue-500 to-purple-500"
             style={{ height: `${Math.max(2, (v / max) * 100)}%` }} title={`${labels[i]}: ${v}`} />
           <span className="text-[9px] text-gray-600 mt-1">{labels[i]?.slice(8) || ''}</span>

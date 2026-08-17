@@ -1,8 +1,12 @@
 {
   "rewrites": [
     {
+      "source": "/api/admin/(.*)",
+      "destination": "/api/admin/$1"
+    },
+    {
       "source": "/api/:path*",
-      "destination": "https://REPLACE_WITH_YOUR_ANALYTICS_SERVICE_URL/api/:path*"
+      "destination": "http://localhost:8787/api/:path*"
     }
   ]
 }
