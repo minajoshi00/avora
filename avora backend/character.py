@@ -38,6 +38,23 @@ class Character(QWidget):
     restore_requested = Signal()
     clicked = Signal()
 
+    # Close gesture configuration
+    close_threshold = 100
+    X_BASE_RADIUS = 30
+    X_GROW_FACTOR = 3.0
+
+    # Gesture state flags
+    close_gesture_in_progress = False
+    is_dragging_downward = False
+    is_dragging_sideways = False
+    drag_start_x = 0
+    drag_start_y = 0
+
+    # X button animation state
+    close_x_scale = 1.0
+    close_x_opacity = 0.0
+    close_x_visible = False
+
     # ========================================================
     # INITIALIZATION
     # ========================================================
@@ -394,6 +411,19 @@ class Character(QWidget):
         self._press_pos = None
         self._press_time = 0.0
         self.click_peek = 0
+
+        # Close gesture state
+        self.close_gesture_in_progress = False
+        self.is_dragging_downward = False
+        self.is_dragging_sideways = False
+        self.drag_start_x = 0
+        self.drag_start_y = 0
+        self.close_x_scale = 1.0
+        self.close_x_opacity = 0.0
+        self.close_x_visible = False
+        self._original_pos_x = 0
+        self._original_pos_y = 0
+        self._anim_timer = None
 
         # ---------------- BLINK ----------------
 
@@ -1682,17 +1712,81 @@ class Character(QWidget):
             self._press_time = time.time()
             self.drag_offset = QPointF(event.position().toPoint())
             self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
+            # Record drag start position (relative to widget for direction detection)
+            self.drag_start_x = event.pos().x()
+            self.drag_start_y = event.pos().y()
+            # Remember original window position for cancel/return
+            self._original_pos_x = self.x()
+            self._original_pos_y = self.y()
+            # Reset gesture state
+            self.close_gesture_in_progress = False
+            self.is_dragging_downward = False
+            self.is_dragging_sideways = False
+            # Stop any running animation from a previous gesture
+            if getattr(self, '_anim_timer', None):
+                if self._anim_timer.isActive():
+                    self._anim_timer.stop()
+                self._anim_timer.deleteLater()
+                self._anim_timer = None
+            # X appears only after actual dragging starts (in mouseMoveEvent)
 
     def mouseMoveEvent(self, event):
         if self._press_pos is not None and not self.dragging:
             dist = (event.pos() - self._press_pos).manhattanLength()
             if dist > 6:
                 self.dragging = True
+                # Normal free-form window drag (works in all directions)
                 global_pos = event.globalPosition().toPoint()
                 self.move(global_pos - self.drag_offset.toPoint())
+                # Show the close indicator as soon as dragging starts
+                self.close_x_visible = True
+                self.close_x_scale = 1.0
+                self.close_x_opacity = 0.6
+                self.update()
         elif self.dragging:
             global_pos = event.globalPosition().toPoint()
-            self.move(global_pos - self.drag_offset.toPoint())
+            new_pos = global_pos - self.drag_offset.toPoint()
+
+            # Direction detection: compare vertical vs horizontal movement
+            delta_x = event.pos().x() - self.drag_start_x
+            delta_y = event.pos().y() - self.drag_start_y
+            vertical = abs(delta_y)
+            horizontal = abs(delta_x)
+
+            # Determine drag direction
+            if not self.is_dragging_downward and not self.is_dragging_sideways:
+                if vertical > 10 or horizontal > 10:
+                    if delta_y > 0 and delta_y >= horizontal:
+                        # Predominantly downward
+                        self.is_dragging_downward = True
+                        self.close_gesture_in_progress = True
+                    else:
+                        # Upward or sideways drag
+                        self.is_dragging_sideways = True
+                        self.close_gesture_in_progress = False
+            elif self.is_dragging_downward:
+                if delta_y > 0:
+                    drag_distance = min(delta_y, self.close_threshold)
+                    # Scale and opacity grow with downward distance
+                    self.close_x_scale = 1.0 + (drag_distance / self.close_threshold) * (self.X_GROW_FACTOR - 1.0)
+                    self.close_x_opacity = min(1.0, 0.4 + (drag_distance / self.close_threshold) * 0.6)
+                else:
+                    # Dragged back up - keep X visible, reduce emphasis
+                    self.close_x_scale = 1.0
+                    self.close_x_opacity = 0.5
+            elif self.is_dragging_sideways:
+                # Sideways/upward drag: keep X visible but not growing
+                self.close_x_scale = 1.0
+                self.close_x_opacity = 0.5
+                # If user switches to downward later, promote to close mode
+                if delta_y > 0 and delta_y >= horizontal:
+                    self.is_dragging_downward = True
+                    self.is_dragging_sideways = False
+                    self.close_gesture_in_progress = True
+
+            # Keep normal free-form window movement in all directions
+            self.move(new_pos)
+            self.update()
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -1705,9 +1799,74 @@ class Character(QWidget):
         self.dragging = False
         self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
         self._press_pos = None
+
+        # Handle drag-down-to-close gesture completion
+        if self.is_dragging_downward and self.close_gesture_in_progress:
+            delta_y = event.pos().y() - self.drag_start_y
+            if delta_y >= self.close_threshold:
+                self._close_avora()
+            else:
+                self._return_to_position()
+        elif self.is_dragging_sideways:
+            self._hide_close_indicator()
+
+        # Reset gesture state
+        self.close_gesture_in_progress = False
+        self.is_dragging_downward = False
+        self.is_dragging_sideways = False
+        if not getattr(self, "_anim_timer", None) or not self._anim_timer.isActive():
+            self.close_x_visible = False
+            self.close_x_scale = 1.0
+            self.close_x_opacity = 0.0
+        self.update()
         super().mouseReleaseEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.restore_requested.emit()
+
+    def _close_avora(self):
+        """Animate AVORA toward the close target and close."""
+        self._animate_to_position(self.x(), self.y() + 200, 200, self.close)
+
+    def _return_to_position(self):
+        """Smoothly animate AVORA back to its original position."""
+        target_x = self._original_pos_x
+        target_y = self._original_pos_y
+        self._animate_to_position(target_x, target_y, 300, self._hide_close_indicator)
+
+    def _animate_to_position(self, target_x, target_y, duration_ms, callback=None):
+        """Smoothly animate window position using a QTimer loop."""
+        self._anim_target_x = target_x
+        self._anim_target_y = target_y
+        self._anim_start_x = self.x()
+        self._anim_start_y = self.y()
+        self._anim_duration = duration_ms
+        self._anim_elapsed = 0
+        self._anim_callback = callback
+        self._anim_timer = QTimer(self)
+        self._anim_timer.timeout.connect(self._tick_animation)
+        self._anim_timer.start(16)
+
+    def _tick_animation(self):
+        """Animation tick for smooth position interpolation."""
+        self._anim_elapsed += 16
+        t = min(1.0, self._anim_elapsed / self._anim_duration)
+        eased = 1 - (1 - t) ** 3
+        x = int(self._anim_start_x + (self._anim_target_x - self._anim_start_x) * eased)
+        y = int(self._anim_start_y + (self._anim_target_y - self._anim_start_y) * eased)
+        self.move(x, y)
+        if t >= 1.0:
+            self._anim_timer.stop()
+            self._anim_timer.deleteLater()
+            self._anim_timer = None
+            if self._anim_callback:
+                self._anim_callback()
+
+    def _hide_close_indicator(self):
+        """Hide the close indicator (X)."""
+        self.close_x_visible = False
+        self.close_x_scale = 1.0
+        self.close_x_opacity = 0.0
+        self.update()
 
     def paintEvent(
         self,
@@ -1817,6 +1976,56 @@ class Character(QWidget):
             painter,
             y,
         )
+
+        # Draw the close (X) indicator on top - fixed at bottom-center
+        self._draw_close_indicator(painter)
+
+    # ========================================================
+    # CLOSE INDICATOR
+    # ========================================================
+
+    def _draw_close_indicator(self, painter):
+        """Draw the close (X) indicator fixed at the window bottom-center."""
+        if not self.close_x_visible:
+            return
+
+        cx = self.width() / 2.0
+        radius = self.X_BASE_RADIUS * self.close_x_scale
+        cy = self.height() - 45.0
+        cy = min(cy, self.height() - radius - 6.0)
+
+        sigma = max(0.0, min(1.0, self.close_x_opacity))
+        if sigma <= 0.0:
+            return
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # Outer glow
+        glow = QRadialGradient(QPointF(cx, cy), radius * 1.4)
+        glow.setColorAt(0.0, QColor(245, 82, 82, int(90 * sigma)))
+        glow.setColorAt(1.0, QColor(245, 82, 82, 0))
+        painter.setBrush(QBrush(glow))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(QPointF(cx, cy), radius * 1.4, radius * 1.4)
+
+        # Solid circle
+        circle_fill = QRadialGradient(QPointF(cx - radius * 0.2, cy - radius * 0.3), radius)
+        circle_fill.setColorAt(0.0, QColor(255, 103, 103, int(235 * sigma)))
+        circle_fill.setColorAt(1.0, QColor(235, 60, 70, int(225 * sigma)))
+        painter.setBrush(QBrush(circle_fill))
+        painter.setPen(QPen(QColor(255, 170, 170, int(160 * sigma)), 2.0))
+        painter.drawEllipse(QPointF(cx, cy), radius, radius)
+
+        # X mark
+        pen_width = max(2.5, radius * 0.16)
+        painter.setPen(QPen(QColor(255, 255, 255, int(250 * sigma)), pen_width,
+                            Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        off = radius * 0.38
+        painter.drawLine(QPointF(cx - off, cy - off), QPointF(cx + off, cy + off))
+        painter.drawLine(QPointF(cx + off, cy - off), QPointF(cx - off, cy + off))
+
+        painter.restore()
 
     # ========================================================
     # HEAD TRANSFORM
