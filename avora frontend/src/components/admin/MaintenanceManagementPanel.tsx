@@ -6,6 +6,8 @@ import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { toggleMaintenance, getMaintenanceStatus } from '../../lib/maintenance';
 import { trackEvent } from '../../lib/analytics';
 
+const ADMIN_PASSWORD = import.meta.env.VITE_MAINTENANCE_ADMIN_PASSWORD || '';
+
 export function MaintenanceManagementPanel() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [confirmMode, setConfirmMode] = useState<'off' | 'on' | null>(null);
@@ -50,7 +52,7 @@ export function MaintenanceManagementPanel() {
     setSuccess(null);
 
     try {
-      const res = await toggleMaintenance({ password });
+      const res = await toggleMaintenance({ password, expectedPassword: ADMIN_PASSWORD });
       if (res.maintenanceMode !== undefined) {
         setMaintenanceMode(res.maintenanceMode);
         setConfirmMode(null);
