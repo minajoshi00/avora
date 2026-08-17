@@ -60,16 +60,6 @@ export default function App() {
     checkMaintenance();
   }, [currentPath]);
 
-  // Auto-reload if maintenance completes while on the main page
-  useEffect(() => {
-    if (!maintenanceMode) {
-      const timer = setTimeout(() => {
-        window.location.reload();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [maintenanceMode]);
-
   if (maintenanceMode) {
     return <MaintenancePage />;
   }
