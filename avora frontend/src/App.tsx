@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { StrictMode } from 'react';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
-import { InteractiveBackground } from './components/ui/InteractiveBackground';
 import { CursorGlow } from './components/interactions/CursorGlow';
 import { CustomCursor } from './components/interactions/CustomCursor';
 import { Home } from './pages/Home';
@@ -21,6 +20,27 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.hash);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [calmMode, setCalmMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        return true;
+      }
+      const stored = localStorage.getItem('calmMode');
+      return stored === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const html = document.documentElement;
+      if (calmMode) {
+        html.classList.add('calm');
+      } else {
+        html.classList.remove('calm');
+      }
+    }
+  }, [calmMode]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -41,14 +61,12 @@ export default function App() {
     }
   }, []);
 
-  // Check maintenance mode on mount
   useEffect(() => {
     const checkMaintenance = async () => {
       try {
         const res = await fetch('/api/admin/maintenance/status', { cache: 'no-store' });
         const data = await res.json();
         setMaintenanceMode(data.maintenanceMode || false);
-        // If coming from admin and turning off maintenance, reload
         if (!data.maintenanceMode && currentPath?.startsWith('#/admin')) {
           window.location.reload();
         }
@@ -87,7 +105,6 @@ export default function App() {
 
   return (
     <StrictMode>
-      <InteractiveBackground />
       <CursorGlow />
       <CustomCursor />
       <SoundToggle />

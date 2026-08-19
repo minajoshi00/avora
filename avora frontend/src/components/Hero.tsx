@@ -1,64 +1,28 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ArrowRight, Play, Sparkles } from 'lucide-react';
 import { Button } from './ui/Button';
-import { InteractiveBackground } from './ui/InteractiveBackground';
 import { GlassModuleCards } from './ui/GlassModuleCards';
-import { InteractiveAvoraCore } from './brand/InteractiveAvoraCore';
 
 export function Hero() {
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const heroRef = useRef<HTMLElement>(null);
-
-  const mouseX = useSpring(useMotionValue(0), { stiffness: 40, damping: 20 });
-  const mouseY = useSpring(useMotionValue(0), { stiffness: 40, damping: 20 });
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!heroRef.current) return;
-      const rect = heroRef.current.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width - 0.5;
-      const y = (e.clientY - rect.top) / rect.height - 0.5;
-      setMousePosition({ x, y });
-      mouseX.set(x * 20);
-      mouseY.set(y * 20);
-    };
-
-    const hero = heroRef.current;
-    if (hero) {
-      hero.addEventListener('mousemove', handleMouseMove, { passive: true });
-      return () => hero.removeEventListener('mousemove', handleMouseMove);
-    }
-  }, [mouseX, mouseY]);
-
   const scrollToDownload = () => {
     const section = document.getElementById('download');
     if (section) section.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
-    <section
-      ref={heroRef}
-      className="relative min-h-screen flex items-center justify-center overflow-hidden"
-    >
-      {/* Deep space base */}
-      <div className="absolute inset-0 bg-[#0a0a0f]" />
-      
-      {/* 3D interactive universe background */}
-      <InteractiveBackground />
-
-      {/* Atmospheric gradient layer with mouse reactivity */}
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#0a0a0f]">
+      {/* Subtle animated gradient background */}
       <motion.div
-        className="absolute inset-0 opacity-50"
+        className="absolute inset-0"
         style={{
-          background: `radial-gradient(circle at ${50 + mousePosition.x * 20}% ${50 + mousePosition.y * 20}%, rgba(96,165,250,0.12) 0%, rgba(167,139,250,0.06) 35%, transparent 65%)`,
+          background: 'radial-gradient(ellipse at 30% 20%, rgba(96,165,250,0.15) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(167,139,250,0.1) 0%, transparent 50%)',
         }}
+        transition={{ duration: 20, ease: 'linear' }}
+        animate={{ x: -100 }}
       />
-
-      {/* Smart contrast scrim */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0f]/60 via-[#0a0a0f]/20 to-[#0a0a0f]/70 pointer-events-none" />
 
       <div className="relative z-10 max-w-6xl mx-auto px-6 text-center">
         {/* Cinematic eyebrow */}
@@ -74,7 +38,7 @@ export function Hero() {
             damping: 20
           }}
           whileHover={{ scale: 1.05, transition: { duration: 0.2 } }}
-          className="magnetic inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-white/[0.1] bg-white/[0.04] backdrop-blur-md mb-10 hover-target group shadow-[0_0_30px_rgba(96,165,250,0.1)]"
+          className="magnetic inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-white/[0.1] bg-white/[0.04] backdrop-blur-md mb-10 hover-target group"
         >
           <motion.div
             animate={{ rotate: [0, 360] }}
@@ -198,34 +162,6 @@ export function Hero() {
 
         {/* Glassmorphism module cards */}
         <GlassModuleCards />
-
-        {/* Interactive AVORA Core */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1, delay: 1.4, ease: [0.16, 1, 0.3, 1] }}
-          className="mt-16 relative inline-flex items-center justify-center"
-          style={{ perspective: 1000 }}
-        >
-          <motion.div
-            style={{
-              x: mouseX,
-              y: mouseY,
-            }}
-            transition={{ type: 'spring', stiffness: 40, damping: 20 }}
-          >
-            <InteractiveAvoraCore state="focused" size={120} />
-          </motion.div>
-
-          {/* Soft refined glow */}
-          <div
-            className="absolute inset-0 blur-3xl opacity-50 pointer-events-none"
-            style={{
-              background: 'radial-gradient(circle, rgba(96,165,250,0.6) 0%, rgba(167,139,250,0.35) 40%, transparent 70%)',
-              transform: 'scale(2.5)',
-            }}
-          />
-        </motion.div>
 
         {/* Scroll invitation */}
         <motion.div
