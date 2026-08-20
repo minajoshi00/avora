@@ -20,7 +20,7 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.hash);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [calmMode, setCalmMode] = useState(() => {
+  const [calmMode, _setCalmMode] = useState(() => {
     if (typeof window !== 'undefined') {
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         return true;
