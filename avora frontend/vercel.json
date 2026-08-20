@@ -1,12 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/api/admin/(.*)",
-      "destination": "/api/admin/$1"
-    },
-    {
-      "source": "/api/:path*",
-      "destination": "http://localhost:8787/api/:path*"
+      "source": "/api/admin(.*)",
+      "destination": "/api/admin$1"
     }
   ]
 }
