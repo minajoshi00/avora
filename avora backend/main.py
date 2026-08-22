@@ -2440,15 +2440,20 @@ class MainWindow(QWidget):
             self.companion.on_user_message(message)
 
         # V2: Capture journey memories (projects, problems, goals,
-        # decisions, milestones) from the user message. Respects
-        # memory.enabled / memory.auto_save settings internally.
+        # decisions, milestones) and working preferences from the
+        # user message. Respects memory settings internally.
         try:
-            from memory import capture_journey_memories
+            from memory import capture_journey_memories, capture_preferences
 
             captured = capture_journey_memories(message)
 
             for jtype, title in captured:
                 print(f"[JOURNEY] Remembered {jtype}: {title}")
+
+            prefs = capture_preferences(message)
+
+            for key, value in prefs:
+                print(f"[PREF] Learned: {key} = {value}")
 
         except Exception as error:
             print("[JOURNEY] Capture error:", error)

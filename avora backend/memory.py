@@ -1079,6 +1079,292 @@ def capture_journey_memories(
 
 
 # ============================================================
+# USER PREFERENCES (V2)
+# ============================================================
+# Non-sensitive interaction preferences that improve future
+# responses. Examples:
+#   - "You usually prefer concise explanations."
+#   - "You prefer fixing one problem at a time."
+#
+# Stored as journey:preference memories with the format
+# "<key>: <value>" so they ride on the existing memory system.
+#
+# Rules:
+#   - Only non-sensitive interaction preferences are stored.
+#   - Never infer sensitive personal attributes.
+#   - Never pretend to know something that is not stored.
+# ============================================================
+
+_PREFERENCE_CATEGORY = "journey:preference"
+
+# Sensitive topics that must never be stored as preferences.
+_PREFERENCE_SENSITIVE_PATTERN = re.compile(
+    r"(?:age|birthday|birth\s?date|gender|race|ethnic|religion|"
+    r"sexual|orientation|health|medical|diagnos|disability|"
+    r"salary|income|debt|password|api[_\s-]?key|token|secret)",
+    re.IGNORECASE,
+)
+
+
+# In-memory mirror for fast lookups; rebuilt from disk lazily.
+_preferences_cache: dict | None = None
+
+
+def _load_preferences() -> dict:
+    """Rebuild the preferences cache from stored memories."""
+    global _preferences_cache
+
+    prefs = {}
+
+    for memory in load_memories():
+        if str(memory.get("category", "")) != _PREFERENCE_CATEGORY:
+            continue
+
+        text = str(memory.get("text", ""))
+        if ":" not in text:
+            continue
+
+        key, _, value = text.partition(":")
+        prefs[key.strip().lower()] = value.strip()
+
+    _preferences_cache = prefs
+    return prefs
+
+
+def set_user_preference(key, value) -> bool:
+    """
+    Store or update a non-sensitive interaction preference.
+
+    Returns True when stored, False otherwise.
+    """
+    if not _memory_enabled():
+        return False
+
+    if not _auto_save_enabled():
+        return False
+
+    key = str(key).strip().lower()
+    value = str(value).strip()
+
+    if not key or not value:
+        return False
+
+    combined = f"{key}: {value}"
+
+    # Never store sensitive personal attributes.
+    if _is_sensitive(combined) or _PREFERENCE_SENSITIVE_PATTERN.search(combined):
+        return False
+
+    if len(combined) > 200:
+        combined = combined[:200]
+
+    global _preferences_cache
+
+    with _memory_lock:
+        memories = load_memories()
+
+        # Update existing preference entry for this key.
+        for memory in memories:
+            if str(memory.get("category", "")) != _PREFERENCE_CATEGORY:
+                continue
+
+            existing_key = str(memory.get("text", "")).partition(":")[0]
+            if existing_key.strip().lower() == key:
+                memory["text"] = combined
+                memory["last_mentioned"] = datetime.now().isoformat(timespec="seconds")
+                saved = _save_file(memories)
+                if saved:
+                    _preferences_cache = None  # invalidate cache
+                return saved
+
+        maximum = _max_memories()
+        if len(memories) >= maximum:
+            memories.pop(0)
+
+        new_memory = {
+            "id": _generate_memory_id(memories),
+            "text": combined,
+            "category": _PREFERENCE_CATEGORY,
+            "importance": 0.7,
+            "times_mentioned": 1,
+            "last_mentioned": datetime.now().isoformat(timespec="seconds"),
+            "status": "active",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+
+        memories.append(new_memory)
+        saved = _save_file(memories)
+        if saved:
+            _preferences_cache = None
+        return saved
+
+
+def get_user_preference(key, default=None):
+    """Get a stored preference value, or default when unknown."""
+    if not _memory_enabled():
+        return default
+
+    global _preferences_cache
+
+    if _preferences_cache is None:
+        _load_preferences()
+
+    return (_preferences_cache or {}).get(str(key).strip().lower(), default)
+
+
+def get_all_preferences() -> dict:
+    """Get all stored preferences as {key: value}."""
+    if not _memory_enabled():
+        return {}
+
+    global _preferences_cache
+
+    if _preferences_cache is None:
+        _load_preferences()
+
+    return dict(_preferences_cache or {})
+
+
+def forget_user_preference(key) -> bool:
+    """Remove a stored preference. Returns True when removed."""
+    if not _memory_enabled():
+        return False
+
+    key = str(key).strip().lower()
+
+    global _preferences_cache
+
+    with _memory_lock:
+        memories = load_memories()
+
+        updated = [
+            m
+            for m in memories
+            if not (
+                str(m.get("category", "")) == _PREFERENCE_CATEGORY
+                and str(m.get("text", "")).partition(":")[0].strip().lower() == key
+            )
+        ]
+
+        if len(updated) == len(memories):
+            return False
+
+        saved = _save_file(updated)
+        if saved:
+            _preferences_cache = None
+        return saved
+
+
+def get_preferences_context_for_ai(max_items=8) -> str:
+    """
+    Format learned preferences for AI prompt injection.
+    Returns empty string when no preferences exist.
+    """
+    if not _memory_enabled():
+        return ""
+
+    prefs = get_all_preferences()
+
+    if not prefs:
+        return ""
+
+    lines = [f"- {k}: {v}" for k, v in list(prefs.items())[:max_items]]
+    header = "Learned user working preferences (apply these to your responses):"
+
+    return header + chr(10) + chr(10).join(lines)
+
+
+def detect_preferences(message):
+    """
+    Detect explicit preference statements in a user message.
+
+    Recognizes patterns like:
+      - "I prefer concise answers"
+      - "I like short responses"
+      - "always explain before applying changes"
+      - "don't use emojis"
+
+    Returns a list of (key, value) tuples. Does NOT store anything.
+    """
+    if not message:
+        return []
+
+    text = str(message).strip()
+    lower = text.lower()
+
+    if len(text) < 6:
+        return []
+
+    found = []
+
+    patterns = (
+        (
+            r"(?:i\s+)?prefer\s+(.{3,80})",
+            lambda v: v,
+        ),
+        (
+            r"i\s+(?:really\s+)?like\s+(.{3,80})",
+            lambda v: v,
+        ),
+        (
+            r"always\s+(.{3,80})",
+            lambda v: v,
+        ),
+        (
+            r"(?:please\s+)?don'?t\s+(.{3,80})",
+            lambda v: f"avoid {v}",
+        ),
+        (
+            r"no\s+emojis?\b",
+            lambda v: "avoid emojis",
+        ),
+    )
+
+    for pattern, transform in patterns:
+        match = re.search(pattern, lower)
+        if not match:
+            continue
+
+        # Patterns without a capture group produce a fixed value.
+        if match.groups():
+            raw_value = transform(match.group(1)).strip().rstrip(".,!?;:")
+        else:
+            raw_value = transform("").strip().rstrip(".,!?;:")
+
+        if len(raw_value) < 3:
+            continue
+
+        combined = f"style: {raw_value}"
+
+        # Skip sensitive content.
+        if _is_sensitive(combined) or _PREFERENCE_SENSITIVE_PATTERN.search(combined):
+            continue
+
+        # Derive a readable key from the value.
+        key = raw_value.split()[0] if raw_value.split() else "style"
+        found.append((f"pref_{key}", raw_value))
+
+        if len(found) >= 2:
+            break
+
+    return found
+
+
+def capture_preferences(message):
+    """
+    Detect and store preferences from a user message.
+    Respects memory settings. Returns list of (key, value) stored.
+    """
+    stored = []
+
+    for key, value in detect_preferences(message):
+        if set_user_preference(key, value):
+            stored.append((key, value))
+
+    return stored
+
+
+# ============================================================
 # PUBLIC API
 # ============================================================
 
@@ -1086,23 +1372,30 @@ __all__ = [
     "add_journey_memory",
     "add_memory",
     "capture_journey_memories",
+    "capture_preferences",
     "clear_memories",
     "complete_journey_memory",
     "delete_memory",
     "delete_memory_by_text",
+    "detect_preferences",
     "export_memories",
     "extract_journey_memories",
+    "forget_user_preference",
+    "get_all_preferences",
     "get_journey_context_for_ai",
     "get_journey_memories",
     "get_memories",
     "get_memories_by_category",
     "get_memory_text",
+    "get_preferences_context_for_ai",
+    "get_user_preference",
     "import_memories",
     "load_memories",
     "memory_count",
     "save_memories",
     "search_journey_memories",
     "search_memory",
+    "set_user_preference",
 ]
 
 

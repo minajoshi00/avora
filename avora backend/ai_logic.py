@@ -613,6 +613,19 @@ def get_context():
         except Exception:
             pass
 
+        # V2: Learned user working preferences
+        try:
+            from memory import get_preferences_context_for_ai
+
+            prefs = get_preferences_context_for_ai()
+
+            if prefs:
+                separator = chr(10) * 2
+                memory += separator + prefs
+
+        except Exception:
+            pass
+
         return memory
     except Exception:
         return "No saved memories."
