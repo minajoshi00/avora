@@ -22,7 +22,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -42,23 +43,21 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from settings import (
-    get_setting,
-    set_setting,
-    reset_all_settings,
-    export_settings,
-    import_settings,
-    create_settings_backup,
-    get_available_backups,
-    restore_backup,
-)
-
 from secure_storage import (
     get_secure_storage,
     mask_key,
-    validate_key_format,
     test_provider_connection,
+    validate_key_format,
+)
+from settings import (
+    create_settings_backup,
+    export_settings,
+    get_available_backups,
+    get_setting,
+    import_settings,
+    reset_all_settings,
+    restore_backup,
+    set_setting,
 )
 
 try:
@@ -68,21 +67,20 @@ try:
         is_gmail_available,
     )
 except ImportError:
+
     def add_gmail_account():
         return {"error": "Gmail skill not available"}
+
     def get_connected_accounts():
         return []
+
     def is_gmail_available():
         return False
 
-from theme import (
-    get_current_theme,
-    generate_qss,
-    apply_theme_to_app,
-    refresh_theme,
-    add_theme_listener,
-)
 
+from theme import (
+    generate_qss,
+)
 
 # ================================================================
 # COLORS
@@ -113,82 +111,66 @@ CATEGORIES = [
         "General",
         "General application behavior",
     ),
-
     (
         "Voice & Audio",
         "Voice and speech settings",
     ),
-
     (
         "AI Engine",
         "AI provider and response behavior",
     ),
-
     (
         "API Keys",
         "Manage AI provider API keys",
     ),
-
     (
         "Memory",
         "Long-term memory controls",
     ),
-
     (
         "Character",
         "AI Friend character behavior",
     ),
-
     (
         "Companion Settings",
         "Customize the floating companion appearance and behavior",
     ),
-
     (
         "Appearance",
         "Theme and visual preferences",
     ),
-
     (
         "Privacy & Security",
         "Permissions and confirmations",
     ),
-
     (
         "Power & Automation",
         "Computer power controls",
     ),
-
     (
         "Gmail",
         "Email integration settings",
     ),
-
     (
         "Files & Computer",
         "File and computer permissions",
     ),
-
     (
         "Advanced",
         "Developer and system controls",
     ),
-
     (
         "Activity Awareness",
         "Proactive behavior and activity detection",
     ),
-
     (
         "Personality",
         "AI Friend personality and tone",
     ),
-
     (
         "Timer",
         "Timer notifications and sounds",
     ),
-
     (
         "System",
         "Application information",
@@ -200,8 +182,8 @@ CATEGORIES = [
 # CUSTOM SWITCH
 # ================================================================
 
-class SettingSwitch(QCheckBox):
 
+class SettingSwitch(QCheckBox):
     def __init__(
         self,
         checked=False,
@@ -210,13 +192,9 @@ class SettingSwitch(QCheckBox):
 
         super().__init__(parent)
 
-        self.setChecked(
-            bool(checked)
-        )
+        self.setChecked(bool(checked))
 
-        self.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.setFixedSize(
             52,
@@ -258,8 +236,8 @@ class SettingSwitch(QCheckBox):
 # SETTING CARD
 # ================================================================
 
-class SettingCard(QFrame):
 
+class SettingCard(QFrame):
     def __init__(
         self,
         title: str,
@@ -270,13 +248,9 @@ class SettingCard(QFrame):
 
         super().__init__(parent)
 
-        self.setObjectName(
-            "SettingCard"
-        )
+        self.setObjectName("SettingCard")
 
-        self.setMinimumHeight(
-            82
-        )
+        self.setMinimumHeight(82)
 
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -298,9 +272,7 @@ class SettingCard(QFrame):
             """
         )
 
-        layout = QHBoxLayout(
-            self
-        )
+        layout = QHBoxLayout(self)
 
         layout.setContentsMargins(
             22,
@@ -309,19 +281,13 @@ class SettingCard(QFrame):
             15,
         )
 
-        layout.setSpacing(
-            20
-        )
+        layout.setSpacing(20)
 
         text_layout = QVBoxLayout()
 
-        text_layout.setSpacing(
-            4
-        )
+        text_layout.setSpacing(4)
 
-        title_label = QLabel(
-            title
-        )
+        title_label = QLabel(title)
 
         title_label.setStyleSheet(
             f"""
@@ -332,13 +298,9 @@ class SettingCard(QFrame):
             """
         )
 
-        description_label = QLabel(
-            description
-        )
+        description_label = QLabel(description)
 
-        description_label.setWordWrap(
-            True
-        )
+        description_label.setWordWrap(True)
 
         description_label.setStyleSheet(
             f"""
@@ -348,13 +310,9 @@ class SettingCard(QFrame):
             """
         )
 
-        text_layout.addWidget(
-            title_label
-        )
+        text_layout.addWidget(title_label)
 
-        text_layout.addWidget(
-            description_label
-        )
+        text_layout.addWidget(description_label)
 
         layout.addLayout(
             text_layout,
@@ -364,8 +322,7 @@ class SettingCard(QFrame):
         layout.addWidget(
             control,
             0,
-            Qt.AlignmentFlag.AlignRight
-            | Qt.AlignmentFlag.AlignVCenter,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
 
 
@@ -373,8 +330,8 @@ class SettingCard(QFrame):
 # SECTION HEADER
 # ================================================================
 
-class SectionHeader(QWidget):
 
+class SectionHeader(QWidget):
     def __init__(
         self,
         title: str,
@@ -384,9 +341,7 @@ class SectionHeader(QWidget):
 
         super().__init__(parent)
 
-        layout = QVBoxLayout(
-            self
-        )
+        layout = QVBoxLayout(self)
 
         layout.setContentsMargins(
             0,
@@ -395,13 +350,9 @@ class SectionHeader(QWidget):
             10,
         )
 
-        layout.setSpacing(
-            5
-        )
+        layout.setSpacing(5)
 
-        title_label = QLabel(
-            title
-        )
+        title_label = QLabel(title)
 
         title_label.setStyleSheet(
             f"""
@@ -412,13 +363,9 @@ class SectionHeader(QWidget):
             """
         )
 
-        description_label = QLabel(
-            description
-        )
+        description_label = QLabel(description)
 
-        description_label.setWordWrap(
-            True
-        )
+        description_label.setWordWrap(True)
 
         description_label.setStyleSheet(
             f"""
@@ -428,21 +375,17 @@ class SectionHeader(QWidget):
             """
         )
 
-        layout.addWidget(
-            title_label
-        )
+        layout.addWidget(title_label)
 
-        layout.addWidget(
-            description_label
-        )
+        layout.addWidget(description_label)
 
 
 # ================================================================
 # SETTINGS WINDOW
 # ================================================================
 
-class SettingsPage(QWidget):
 
+class SettingsPage(QWidget):
     settings_changed = Signal(
         str,
         object,
@@ -455,13 +398,9 @@ class SettingsPage(QWidget):
         parent=None,
     ):
 
-        super().__init__(
-            parent
-        )
+        super().__init__(parent)
 
-        self.setWindowTitle(
-            "AI Friend Settings"
-        )
+        self.setWindowTitle("AI Friend Settings")
 
         self.setMinimumSize(
             950,
@@ -486,9 +425,7 @@ class SettingsPage(QWidget):
 
     def build_ui(self):
 
-        root_layout = QHBoxLayout(
-            self
-        )
+        root_layout = QHBoxLayout(self)
 
         root_layout.setContentsMargins(
             0,
@@ -497,9 +434,7 @@ class SettingsPage(QWidget):
             0,
         )
 
-        root_layout.setSpacing(
-            0
-        )
+        root_layout.setSpacing(0)
 
         # ========================================================
         # SIDEBAR
@@ -507,17 +442,11 @@ class SettingsPage(QWidget):
 
         self.sidebar = QFrame()
 
-        self.sidebar.setObjectName(
-            "Sidebar"
-        )
+        self.sidebar.setObjectName("Sidebar")
 
-        self.sidebar.setFixedWidth(
-            270
-        )
+        self.sidebar.setFixedWidth(270)
 
-        sidebar_layout = QVBoxLayout(
-            self.sidebar
-        )
+        sidebar_layout = QVBoxLayout(self.sidebar)
 
         sidebar_layout.setContentsMargins(
             20,
@@ -526,17 +455,13 @@ class SettingsPage(QWidget):
             20,
         )
 
-        sidebar_layout.setSpacing(
-            10
-        )
+        sidebar_layout.setSpacing(10)
 
         # --------------------------------------------------------
         # BRAND
         # --------------------------------------------------------
 
-        brand_title = QLabel(
-            "AI FRIEND"
-        )
+        brand_title = QLabel("AI FRIEND")
 
         brand_title.setStyleSheet(
             f"""
@@ -548,9 +473,7 @@ class SettingsPage(QWidget):
             """
         )
 
-        brand_subtitle = QLabel(
-            "CONTROL CENTER"
-        )
+        brand_subtitle = QLabel("CONTROL CENTER")
 
         brand_subtitle.setStyleSheet(
             f"""
@@ -561,17 +484,11 @@ class SettingsPage(QWidget):
             """
         )
 
-        sidebar_layout.addWidget(
-            brand_title
-        )
+        sidebar_layout.addWidget(brand_title)
 
-        sidebar_layout.addWidget(
-            brand_subtitle
-        )
+        sidebar_layout.addWidget(brand_subtitle)
 
-        sidebar_layout.addSpacing(
-            18
-        )
+        sidebar_layout.addSpacing(18)
 
         # ========================================================
         # CATEGORY LIST
@@ -579,9 +496,7 @@ class SettingsPage(QWidget):
 
         self.category_list = QListWidget()
 
-        self.category_list.setSpacing(
-            5
-        )
+        self.category_list.setSpacing(5)
 
         self.category_list.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
@@ -592,23 +507,16 @@ class SettingsPage(QWidget):
         )
 
         for category_name, description in CATEGORIES:
-
-            item = QListWidgetItem(
-                category_name
-            )
+            item = QListWidgetItem(category_name)
 
             item.setData(
                 Qt.ItemDataRole.UserRole,
                 category_name,
             )
 
-            self.category_list.addItem(
-                item
-            )
+            self.category_list.addItem(item)
 
-        self.category_list.currentRowChanged.connect(
-            self.change_category
-        )
+        self.category_list.currentRowChanged.connect(self.change_category)
 
         sidebar_layout.addWidget(
             self.category_list,
@@ -619,14 +527,9 @@ class SettingsPage(QWidget):
         # SIDEBAR FOOTER
         # ========================================================
 
-        footer = QLabel(
-            "AI Friend Settings\n"
-            "Changes are saved automatically."
-        )
+        footer = QLabel("AI Friend Settings\nChanges are saved automatically.")
 
-        footer.setWordWrap(
-            True
-        )
+        footer.setWordWrap(True)
 
         footer.setStyleSheet(
             f"""
@@ -637,13 +540,9 @@ class SettingsPage(QWidget):
             """
         )
 
-        sidebar_layout.addWidget(
-            footer
-        )
+        sidebar_layout.addWidget(footer)
 
-        root_layout.addWidget(
-            self.sidebar
-        )
+        root_layout.addWidget(self.sidebar)
 
         # ========================================================
         # MAIN AREA
@@ -651,13 +550,9 @@ class SettingsPage(QWidget):
 
         self.main_area = QFrame()
 
-        self.main_area.setObjectName(
-            "MainArea"
-        )
+        self.main_area.setObjectName("MainArea")
 
-        main_layout = QVBoxLayout(
-            self.main_area
-        )
+        main_layout = QVBoxLayout(self.main_area)
 
         main_layout.setContentsMargins(
             38,
@@ -666,9 +561,7 @@ class SettingsPage(QWidget):
             28,
         )
 
-        main_layout.setSpacing(
-            0
-        )
+        main_layout.setSpacing(0)
 
         # ========================================================
         # TOP BAR
@@ -676,13 +569,9 @@ class SettingsPage(QWidget):
 
         top_bar = QHBoxLayout()
 
-        top_bar.setSpacing(
-            10
-        )
+        top_bar.setSpacing(10)
 
-        self.page_title = QLabel(
-            "General"
-        )
+        self.page_title = QLabel("General")
 
         self.page_title.setStyleSheet(
             f"""
@@ -693,9 +582,7 @@ class SettingsPage(QWidget):
             """
         )
 
-        self.page_description = QLabel(
-            "General application behavior"
-        )
+        self.page_description = QLabel("General application behavior")
 
         self.page_description.setStyleSheet(
             f"""
@@ -707,21 +594,13 @@ class SettingsPage(QWidget):
 
         title_layout = QVBoxLayout()
 
-        title_layout.setSpacing(
-            4
-        )
+        title_layout.setSpacing(4)
 
-        title_layout.addWidget(
-            self.page_title
-        )
+        title_layout.addWidget(self.page_title)
 
-        title_layout.addWidget(
-            self.page_description
-        )
+        title_layout.addWidget(self.page_description)
 
-        top_bar.addLayout(
-            title_layout
-        )
+        top_bar.addLayout(title_layout)
 
         top_bar.addStretch()
 
@@ -729,73 +608,43 @@ class SettingsPage(QWidget):
         # BACK TO CHAT BUTTON
         # ========================================================
 
-        self.back_button = QPushButton(
-            "←  Back to Chat"
-        )
+        self.back_button = QPushButton("←  Back to Chat")
 
-        self.back_button.setObjectName(
-            "BackButton"
-        )
+        self.back_button.setObjectName("BackButton")
 
-        self.back_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        self.back_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.back_button.clicked.connect(
-            self.back_to_chat
-        )
+        self.back_button.clicked.connect(self.back_to_chat)
 
-        top_bar.addWidget(
-            self.back_button
-        )
+        top_bar.addWidget(self.back_button)
 
         # ========================================================
         # BACKUP BUTTON
         # ========================================================
 
-        backup_button = QPushButton(
-            "Create Backup"
-        )
+        backup_button = QPushButton("Create Backup")
 
-        backup_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        backup_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        backup_button.clicked.connect(
-            self.create_backup
-        )
+        backup_button.clicked.connect(self.create_backup)
 
-        top_bar.addWidget(
-            backup_button
-        )
+        top_bar.addWidget(backup_button)
 
         # ========================================================
         # RESET BUTTON
         # ========================================================
 
-        reset_button = QPushButton(
-            "Reset All"
-        )
+        reset_button = QPushButton("Reset All")
 
-        reset_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        reset_button.clicked.connect(
-            self.reset_everything
-        )
+        reset_button.clicked.connect(self.reset_everything)
 
-        top_bar.addWidget(
-            reset_button
-        )
+        top_bar.addWidget(reset_button)
 
-        main_layout.addLayout(
-            top_bar
-        )
+        main_layout.addLayout(top_bar)
 
-        main_layout.addSpacing(
-            24
-        )
+        main_layout.addSpacing(24)
 
         # ========================================================
         # SCROLL AREA
@@ -803,13 +652,9 @@ class SettingsPage(QWidget):
 
         self.scroll_area = QScrollArea()
 
-        self.scroll_area.setWidgetResizable(
-            True
-        )
+        self.scroll_area.setWidgetResizable(True)
 
-        self.scroll_area.setFrameShape(
-            QFrame.Shape.NoFrame
-        )
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         self.scroll_area.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
@@ -821,13 +666,9 @@ class SettingsPage(QWidget):
 
         self.content_widget = QWidget()
 
-        self.content_widget.setObjectName(
-            "ContentWidget"
-        )
+        self.content_widget.setObjectName("ContentWidget")
 
-        self.content_layout = QVBoxLayout(
-            self.content_widget
-        )
+        self.content_layout = QVBoxLayout(self.content_widget)
 
         self.content_layout.setContentsMargins(
             0,
@@ -836,13 +677,9 @@ class SettingsPage(QWidget):
             24,
         )
 
-        self.content_layout.setSpacing(
-            12
-        )
+        self.content_layout.setSpacing(12)
 
-        self.scroll_area.setWidget(
-            self.content_widget
-        )
+        self.scroll_area.setWidget(self.content_widget)
 
         main_layout.addWidget(
             self.scroll_area,
@@ -854,9 +691,7 @@ class SettingsPage(QWidget):
             1,
         )
 
-        self.category_list.setCurrentRow(
-            0
-        )
+        self.category_list.setCurrentRow(0)
 
     # ============================================================
     # STYLES
@@ -864,9 +699,7 @@ class SettingsPage(QWidget):
 
     def apply_styles(self):
 
-        self.setStyleSheet(
-            generate_qss()
-        )
+        self.setStyleSheet(generate_qss())
 
     # ============================================================
     # CATEGORY SWITCHING
@@ -878,92 +711,45 @@ class SettingsPage(QWidget):
     ):
 
         if index < 0:
-
             return
 
-        if index >= len(
-            CATEGORIES
-        ):
-
+        if index >= len(CATEGORIES):
             return
 
         category_name = CATEGORIES[index][0]
 
-        self.page_title.setText(
-            category_name
-        )
+        self.page_title.setText(category_name)
 
-        self.page_description.setText(
-            CATEGORIES[index][1]
-        )
+        self.page_description.setText(CATEGORIES[index][1])
 
         self.clear_content()
 
         builders = {
-
-            "General":
-            self.build_general,
-
-            "Voice & Audio":
-            self.build_voice,
-
-            "AI Engine":
-            self.build_ai,
-
-            "API Keys":
-            self.build_api_keys,
-
-            "Memory":
-            self.build_memory,
-
-            "Character":
-            self.build_character,
-
-            "Companion Settings":
-            self.build_companion,
-
-            "Appearance":
-            self.build_appearance,
-
-            "Privacy & Security":
-            self.build_privacy,
-
-            "Power & Automation":
-            self.build_power,
-
-            "Gmail":
-            self.build_gmail,
-
-            "Files & Computer":
-            self.build_files,
-
-            "Advanced":
-            self.build_advanced,
-
-            "Activity Awareness":
-            self.build_activity,
-
-            "Personality":
-            self.build_personality,
-
-            "Timer":
-            self.build_timer,
-
-            "System":
-            self.build_system,
+            "General": self.build_general,
+            "Voice & Audio": self.build_voice,
+            "AI Engine": self.build_ai,
+            "API Keys": self.build_api_keys,
+            "Memory": self.build_memory,
+            "Character": self.build_character,
+            "Companion Settings": self.build_companion,
+            "Appearance": self.build_appearance,
+            "Privacy & Security": self.build_privacy,
+            "Power & Automation": self.build_power,
+            "Gmail": self.build_gmail,
+            "Files & Computer": self.build_files,
+            "Advanced": self.build_advanced,
+            "Activity Awareness": self.build_activity,
+            "Personality": self.build_personality,
+            "Timer": self.build_timer,
+            "System": self.build_system,
         }
 
-        builder = builders.get(
-            category_name
-        )
+        builder = builders.get(category_name)
 
         if builder:
-
             builder()
 
-        self.scroll_area.verticalScrollBar().setValue(
-            0
-        )
+        self.scroll_area.verticalScrollBar().setValue(0)
 
     # ============================================================
     # CONTENT HELPERS
@@ -972,15 +758,11 @@ class SettingsPage(QWidget):
     def clear_content(self):
 
         while self.content_layout.count():
-
-            item = self.content_layout.takeAt(
-                0
-            )
+            item = self.content_layout.takeAt(0)
 
             widget = item.widget()
 
             if widget:
-
                 widget.deleteLater()
 
     def add_section(
@@ -994,9 +776,7 @@ class SettingsPage(QWidget):
             description,
         )
 
-        self.content_layout.addWidget(
-            header
-        )
+        self.content_layout.addWidget(header)
 
     def add_card(
         self,
@@ -1011,15 +791,11 @@ class SettingsPage(QWidget):
             control,
         )
 
-        self.content_layout.addWidget(
-            card
-        )
+        self.content_layout.addWidget(card)
 
     def add_spacer(self):
 
-        self.content_layout.addStretch(
-            1
-        )
+        self.content_layout.addStretch(1)
 
     # ============================================================
     # SAFE SETTING READ
@@ -1032,14 +808,12 @@ class SettingsPage(QWidget):
     ):
 
         try:
-
             return get_setting(
                 path,
                 default,
             )
 
         except Exception:
-
             return default
 
     # ============================================================
@@ -1062,15 +836,10 @@ class SettingsPage(QWidget):
         )
 
         switch.toggled.connect(
-
-            lambda value,
-            p=path:
-
-            self.change_setting(
+            lambda value, p=path: self.change_setting(
                 p,
                 value,
             )
-
         )
 
         self.add_card(
@@ -1095,18 +864,15 @@ class SettingsPage(QWidget):
         combo = QComboBox()
 
         if not values:
-
             return
 
         if labels is None:
-
             labels = values
 
         for value, label in zip(
             values,
             labels,
         ):
-
             combo.addItem(
                 label,
                 value,
@@ -1117,27 +883,16 @@ class SettingsPage(QWidget):
             values[0],
         )
 
-        index = combo.findData(
-            current_value
-        )
+        index = combo.findData(current_value)
 
         if index >= 0:
-
-            combo.setCurrentIndex(
-                index
-            )
+            combo.setCurrentIndex(index)
 
         combo.currentIndexChanged.connect(
-
-            lambda index,
-            c=combo,
-            p=path:
-
-            self.change_setting(
+            lambda index, c=combo, p=path: self.change_setting(
                 p,
                 c.itemData(index),
             )
-
         )
 
         self.add_card(
@@ -1161,25 +916,13 @@ class SettingsPage(QWidget):
         decimals=0,
     ):
 
-        slider = QSlider(
-            Qt.Orientation.Horizontal
-        )
+        slider = QSlider(Qt.Orientation.Horizontal)
 
         scale = 10 if decimals else 1
 
-        slider.setMinimum(
-            int(
-                minimum
-                * scale
-            )
-        )
+        slider.setMinimum(int(minimum * scale))
 
-        slider.setMaximum(
-            int(
-                maximum
-                * scale
-            )
-        )
+        slider.setMaximum(int(maximum * scale))
 
         current = self.read_setting(
             path,
@@ -1187,50 +930,31 @@ class SettingsPage(QWidget):
         )
 
         try:
-
-            current = float(
-                current
-            )
+            current = float(current)
 
         except (
             TypeError,
             ValueError,
         ):
-
-            current = float(
-                default
-            )
+            current = float(default)
 
         current = max(
             minimum,
             min(
                 maximum,
                 current,
-            )
+            ),
         )
 
-        slider.setValue(
-            int(
-                current
-                * scale
-            )
-        )
+        slider.setValue(int(current * scale))
 
-        slider.setFixedWidth(
-            180
-        )
+        slider.setFixedWidth(180)
 
         slider.valueChanged.connect(
-
-            lambda value,
-            p=path,
-            s=scale:
-
-            self.change_setting(
+            lambda value, p=path, s=scale: self.change_setting(
                 p,
                 value / s,
             )
-
         )
 
         self.add_card(
@@ -1250,25 +974,19 @@ class SettingsPage(QWidget):
     ):
 
         try:
-
             success = set_setting(
                 path,
                 value,
             )
 
             if success:
-
                 self.settings_changed.emit(
                     path,
                     value,
                 )
 
         except Exception as error:
-
-            print(
-                f"[SETTINGS ERROR] "
-                f"{path}: {error}"
-            )
+            print(f"[SETTINGS ERROR] {path}: {error}")
 
     # ============================================================
     # GENERAL
@@ -1699,9 +1417,12 @@ class SettingsPage(QWidget):
 
         try:
             from character import Character
+
             self.preview_character = Character(preview_frame)
             self.preview_character.set_scale_factor(0.6)
-            preview_inner.addWidget(self.preview_character, 0, Qt.AlignmentFlag.AlignCenter)
+            preview_inner.addWidget(
+                self.preview_character, 0, Qt.AlignmentFlag.AlignCenter
+            )
         except Exception as e:
             print("[PREVIEW] Failed to create preview character:", e)
             self.preview_character = None
@@ -1713,11 +1434,11 @@ class SettingsPage(QWidget):
         self.content_layout.addWidget(preview_container)
 
         self.add_slider(
-            "companion_widget.size",
+            "character.size",
             "Size",
             "Control the size of the floating companion.",
             0.5,
-            2.0,
+            3.0,
             1.0,
             1,
         )
@@ -1783,9 +1504,7 @@ class SettingsPage(QWidget):
                 """
             )
             btn.setCheckable(True)
-            btn.clicked.connect(
-                lambda _, c=color, b=btn: self._set_glow_color(c, b)
-            )
+            btn.clicked.connect(lambda _, c=color, b=btn: self._set_glow_color(c, b))
             glow_color_presets_layout.addWidget(btn)
             self.glow_color_buttons.append(btn)
 
@@ -1841,24 +1560,17 @@ class SettingsPage(QWidget):
             ],
         )
 
-        reset_button = QPushButton(
-            "Reset to Default"
-        )
-        reset_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
-        reset_button.clicked.connect(
-            self._reset_companion_settings
-        )
+        reset_button = QPushButton("Reset to Default")
+        reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        reset_button.clicked.connect(self._reset_companion_settings)
         self.content_layout.addWidget(reset_button)
 
-        self.settings_changed.connect(
-            self._on_companion_setting_changed
-        )
+        self.settings_changed.connect(self._on_companion_setting_changed)
 
     def _update_glow_color_buttons(self):
         try:
             from settings import get_setting
+
             current_color = get_setting("companion_widget.glow_color", "#00FF88")
         except Exception:
             current_color = "#00FF88"
@@ -1870,6 +1582,7 @@ class SettingsPage(QWidget):
     def _set_glow_color(self, color, button):
         try:
             from settings import set_setting
+
             set_setting("companion_widget.glow_color", color)
         except Exception:
             pass
@@ -1881,6 +1594,7 @@ class SettingsPage(QWidget):
     def _pick_custom_glow_color(self):
         try:
             from settings import get_setting
+
             current = get_setting("companion_widget.glow_color", "#00FF88")
         except Exception:
             current = "#00FF88"
@@ -1890,6 +1604,7 @@ class SettingsPage(QWidget):
             hex_color = color.name().upper()
             try:
                 from settings import set_setting
+
                 set_setting("companion_widget.glow_color", hex_color)
             except Exception:
                 pass
@@ -1898,12 +1613,12 @@ class SettingsPage(QWidget):
             self._update_preview_character()
 
     def _on_companion_setting_changed(self, path, value):
-        if path and path.startswith("companion_widget."):
+        if path and (path.startswith("companion_widget.") or path == "character.size"):
             self._update_preview_character()
             self._update_glow_color_buttons()
 
     def _update_preview_character(self):
-        if hasattr(self, 'preview_character') and self.preview_character is not None:
+        if hasattr(self, "preview_character") and self.preview_character is not None:
             try:
                 self.preview_character.apply_companion_settings()
             except Exception:
@@ -1912,8 +1627,10 @@ class SettingsPage(QWidget):
     def _reset_companion_settings(self):
         try:
             from settings import set_setting
+
             set_setting("companion_widget.enabled", True)
             set_setting("companion_widget.size", 1.0)
+            set_setting("character.size", 1.0)
             set_setting("companion_widget.glow_intensity", 0.5)
             set_setting("companion_widget.glow_color", "#00FF88")
             set_setting("companion_widget.animation", "gentle_float")
@@ -2341,7 +2058,7 @@ class SettingsPage(QWidget):
             "Gemini API Key",
             "Google Gemini (Primary AI Provider)",
             "Get your key at https://makersuite.google.com/app/apikey",
-            "AI"
+            "AI",
         )
 
         # Groq API Key
@@ -2350,7 +2067,7 @@ class SettingsPage(QWidget):
             "Groq API Key",
             "Groq (Fast AI Provider)",
             "Get your key at https://console.groq.com/keys",
-            "gsk_"
+            "gsk_",
         )
 
         # OpenAI API Key (optional)
@@ -2359,7 +2076,7 @@ class SettingsPage(QWidget):
             "OpenAI API Key (Optional)",
             "OpenAI GPT Models (Optional)",
             "Get your key at https://platform.openai.com/api-keys",
-            "sk-"
+            "sk-",
         )
 
         self.content_layout.addSpacing(20)
@@ -2433,7 +2150,7 @@ class SettingsPage(QWidget):
         stored_key = storage.get_key(provider_id)
         masked = mask_key(stored_key) if stored_key else "Not configured"
 
-        self.key_inputs = getattr(self, 'key_inputs', {})
+        self.key_inputs = getattr(self, "key_inputs", {})
         key_input = QLineEdit()
         key_input.setPlaceholderText(f"Enter {title}...")
         key_input.setEchoMode(QLineEdit.EchoMode.Password)
@@ -2501,7 +2218,9 @@ class SettingsPage(QWidget):
         def save_key():
             key = key_input.text().strip()
             if not key:
-                QMessageBox.warning(self, "Invalid Key", "Please enter a valid API key.")
+                QMessageBox.warning(
+                    self, "Invalid Key", "Please enter a valid API key."
+                )
                 return
 
             # Validate format
@@ -2511,7 +2230,7 @@ class SettingsPage(QWidget):
                     self,
                     "Key Format Warning",
                     f"{msg}\n\nSave anyway?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if reply != QMessageBox.StandardButton.Yes:
                     return
@@ -2519,7 +2238,11 @@ class SettingsPage(QWidget):
             # Save to secure storage
             storage = get_secure_storage()
             if storage.set_key(provider_id, key):
-                QMessageBox.information(self, "Key Saved", f"{title} saved successfully!\n\nKey is encrypted and stored securely.")
+                QMessageBox.information(
+                    self,
+                    "Key Saved",
+                    f"{title} saved successfully!\n\nKey is encrypted and stored securely.",
+                )
                 key_input.clear()
                 self.refresh_provider_status()
             else:
@@ -2588,10 +2311,14 @@ class SettingsPage(QWidget):
                     widget.deleteLater()
 
             providers = [
-                ("gemini", "Gemini", GEMINI_KEY),
-                ("groq", "Groq", GROQ_KEY),
-                ("openai", "OpenAI", OPENAI_KEY),
+                ("gemini", "Gemini"),
+                ("groq", "Groq"),
+                ("openai", "OpenAI"),
             ]
+
+            for i, (provider_id, name) in enumerate(providers):
+                stored = get_secure_storage().get_key(provider_id)
+                providers[i] = (provider_id, name, stored)
 
             for provider_id, name, key in providers:
                 status_row = QHBoxLayout()
@@ -2701,27 +2428,18 @@ class SettingsPage(QWidget):
         backups = get_available_backups()
 
         if backups:
-
             self.add_section(
                 "Available Backups",
                 "Restore a previous settings configuration.",
             )
 
             for backup in backups[:10]:
-
-                filename = Path(
-                    backup
-                ).name
+                filename = Path(backup).name
 
                 self.add_action_button(
                     filename,
                     "Restore this settings backup.",
-                    lambda checked=False,
-                    path=backup:
-
-                    self.restore_backup_file(
-                        path
-                    ),
+                    lambda checked=False, path=backup: self.restore_backup_file(path),
                 )
 
         self.add_spacer()
@@ -2978,17 +2696,11 @@ class SettingsPage(QWidget):
         callback,
     ):
 
-        button = QPushButton(
-            "Open"
-        )
+        button = QPushButton("Open")
 
-        button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        button.clicked.connect(
-            callback
-        )
+        button.clicked.connect(callback)
 
         self.add_card(
             title,
@@ -3003,6 +2715,7 @@ class SettingsPage(QWidget):
     def view_stored_memories(self):
         try:
             from memory import get_memories, get_memory_text
+
             mems = get_memories()
             if not mems:
                 QMessageBox.information(
@@ -3035,6 +2748,7 @@ class SettingsPage(QWidget):
         if confirm == QMessageBox.StandardButton.Yes:
             try:
                 from memory import clear_memories
+
                 clear_memories()
                 QMessageBox.information(
                     self,
@@ -3055,11 +2769,9 @@ class SettingsPage(QWidget):
     def create_backup(self):
 
         try:
-
             result = create_settings_backup()
 
             if result:
-
                 QMessageBox.information(
                     self,
                     "Backup Created",
@@ -3067,7 +2779,6 @@ class SettingsPage(QWidget):
                 )
 
             else:
-
                 QMessageBox.warning(
                     self,
                     "Backup Failed",
@@ -3075,7 +2786,6 @@ class SettingsPage(QWidget):
                 )
 
         except Exception as error:
-
             QMessageBox.critical(
                 self,
                 "Backup Error",
@@ -3096,17 +2806,12 @@ class SettingsPage(QWidget):
         )
 
         if not file_path:
-
             return
 
         try:
-
-            success = export_settings(
-                file_path
-            )
+            success = export_settings(file_path)
 
             if success:
-
                 QMessageBox.information(
                     self,
                     "Export Successful",
@@ -3114,7 +2819,6 @@ class SettingsPage(QWidget):
                 )
 
             else:
-
                 QMessageBox.warning(
                     self,
                     "Export Failed",
@@ -3122,7 +2826,6 @@ class SettingsPage(QWidget):
                 )
 
         except Exception as error:
-
             QMessageBox.critical(
                 self,
                 "Export Error",
@@ -3143,7 +2846,6 @@ class SettingsPage(QWidget):
         )
 
         if not file_path:
-
             return
 
         answer = QMessageBox.question(
@@ -3154,23 +2856,17 @@ class SettingsPage(QWidget):
                 "your current configuration.\n\n"
                 "Continue?"
             ),
-            QMessageBox.StandardButton.Yes
-            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
 
         if answer != QMessageBox.StandardButton.Yes:
-
             return
 
         try:
-
-            success = import_settings(
-                file_path
-            )
+            success = import_settings(file_path)
 
             if success:
-
                 QMessageBox.information(
                     self,
                     "Import Successful",
@@ -3180,12 +2876,9 @@ class SettingsPage(QWidget):
                     ),
                 )
 
-                self.change_category(
-                    self.category_list.currentRow()
-                )
+                self.change_category(self.category_list.currentRow())
 
             else:
-
                 QMessageBox.warning(
                     self,
                     "Import Failed",
@@ -3193,7 +2886,6 @@ class SettingsPage(QWidget):
                 )
 
         except Exception as error:
-
             QMessageBox.critical(
                 self,
                 "Import Error",
@@ -3212,39 +2904,27 @@ class SettingsPage(QWidget):
         answer = QMessageBox.question(
             self,
             "Restore Backup",
-            (
-                "Restore this backup?\n\n"
-                "Your current settings will be backed up first."
-            ),
-            QMessageBox.StandardButton.Yes
-            | QMessageBox.StandardButton.No,
+            ("Restore this backup?\n\nYour current settings will be backed up first."),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
 
         if answer != QMessageBox.StandardButton.Yes:
-
             return
 
         try:
-
-            success = restore_backup(
-                path
-            )
+            success = restore_backup(path)
 
             if success:
-
                 QMessageBox.information(
                     self,
                     "Backup Restored",
                     "Settings restored successfully.",
                 )
 
-                self.change_category(
-                    self.category_list.currentRow()
-                )
+                self.change_category(self.category_list.currentRow())
 
             else:
-
                 QMessageBox.warning(
                     self,
                     "Restore Failed",
@@ -3252,7 +2932,6 @@ class SettingsPage(QWidget):
                 )
 
         except Exception as error:
-
             QMessageBox.critical(
                 self,
                 "Restore Error",
@@ -3274,38 +2953,26 @@ class SettingsPage(QWidget):
                 "A backup will be created first.\n\n"
                 "Are you sure?"
             ),
-            QMessageBox.StandardButton.Yes
-            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
 
         if answer != QMessageBox.StandardButton.Yes:
-
             return
 
         try:
-
-            success = reset_all_settings(
-                create_backup=True
-            )
+            success = reset_all_settings(create_backup=True)
 
             if success:
-
                 QMessageBox.information(
                     self,
                     "Settings Reset",
-                    (
-                        "All settings were restored "
-                        "to factory defaults."
-                    ),
+                    ("All settings were restored to factory defaults."),
                 )
 
-                self.change_category(
-                    self.category_list.currentRow()
-                )
+                self.change_category(self.category_list.currentRow())
 
             else:
-
                 QMessageBox.warning(
                     self,
                     "Reset Failed",
@@ -3313,13 +2980,11 @@ class SettingsPage(QWidget):
                 )
 
         except Exception as error:
-
             QMessageBox.critical(
                 self,
                 "Reset Error",
                 str(error),
             )
-
 
     # ============================================================
     # GMAIL CONNECTION
@@ -3351,9 +3016,7 @@ class SettingsPage(QWidget):
                     f"Gmail account connected successfully:\n\n{result['email']}\n\nYou can now use email features.",
                 )
                 # Refresh the settings page to show updated state
-                self.change_category(
-                    self.category_list.currentRow()
-                )
+                self.change_category(self.category_list.currentRow())
                 return
 
             QMessageBox.information(
@@ -3374,18 +3037,13 @@ class SettingsPage(QWidget):
 # ================================================================
 
 if __name__ == "__main__":
-
-    app = QApplication(
-        sys.argv
-    )
+    app = QApplication(sys.argv)
 
     window = SettingsPage()
 
     window.show()
 
-    sys.exit(
-        app.exec()
-    )
+    sys.exit(app.exec())
 
 
 # Backward compatibility alias

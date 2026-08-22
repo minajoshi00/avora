@@ -477,7 +477,7 @@ class Character(QWidget):
     def apply_companion_settings(self):
         try:
             from settings import get_setting
-            size = float(get_setting("companion_widget.size", 1.0))
+            size = float(get_setting("character.size", get_setting("companion_widget.size", 1.0)))
             glow_intensity = float(get_setting("companion_widget.glow_intensity", 0.5))
             glow_color = get_setting("companion_widget.glow_color", "#00FF88")
             animation = get_setting("companion_widget.animation", "gentle_float")

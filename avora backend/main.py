@@ -24,47 +24,97 @@
 
 from __future__ import annotations
 
-
 # ============================================================
 # STANDARD LIBRARY
 # ============================================================
-
 import os
 import sys
-import traceback
 import tempfile
+import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
+from activity_monitor import (
+    ActivityMonitor,
+)
+from app_paths import (
+    APP_DATA_DIR,
+    ICON_PATH,
+)
+from app_utils import (
+    clean_ai_reply,
+    format_status,
+    sanitize_user_text,
+)
+from avora_automation import (
+    initialize as init_automation,
+)
+from avora_clipboard import (
+    initialize as init_clipboard,
+)
+from avora_clipboard import (
+    stop_clipboard_monitor,
+)
+from avora_hotkey import (
+    initialize as init_hotkey,
+)
+from avora_hotkey import (
+    stop_hotkey_listener,
+)
+
+# ============================================================
+# AVORA SYSTEMS
+# ============================================================
+from avora_safety import (
+    initialize as init_safety,
+)
+from avora_safety import (
+    is_panic,
+    log_activity,
+)
+from character import (
+    Character,
+)
+from chat_sidebar import (
+    ChatSidebar,
+    generate_title_from_messages,
+    load_conversations,
+    save_conversations,
+)
+from companion_behavior import (
+    CompanionBehaviorController,
+)
+from companion_intelligence import (
+    CompanionIntelligence,
+    CompanionMood,
+)
+from core.bootstrap import (
+    get_bootstrap,
+)
 
 # ============================================================
 # PY SIDE 6
 # ============================================================
-
 from PySide6.QtCore import (
     QEvent,
     QPoint,
-    QPropertyAnimation,
+    Qt,
     QThread,
     QTimer,
-    QEasingCurve,
     Signal,
-    Qt,
 )
-
 from PySide6.QtGui import (
     QColor,
     QFont,
     QGuiApplication,
     QIcon,
-    QPixmap,
     QPainter,
+    QPixmap,
 )
-
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -75,138 +125,42 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QStackedWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
-    QTextBrowser,
-    QFileDialog,
 )
-
+from settings import (
+    add_settings_listener,
+    get_setting,
+    is_character_enabled,
+    is_voice_enabled,
+    set_setting,
+)
+from skills.chat_worker import (
+    RegenerateWorker,
+    StreamingWorker,
+)
+from skills.markdown_renderer import (
+    markdown_to_html,
+)
+from theme import (
+    add_theme_listener,
+    apply_theme_to_app,
+    generate_qss,
+    get_current_theme,
+    is_dark_mode,
+)
 
 # ============================================================
 # PROJECT IMPORTS
 # ============================================================
-
 from voice import (
-    speak,
-    stop_speaking,
-    listen,
+    is_recording,
     listen_start,
     listen_stop,
-    is_recording,
+    speak,
+    stop_speaking,
 )
-
-from ai_logic import (
-    get_ai_response,
-)
-
-from character import (
-    Character,
-)
-
-from settings import (
-    get_setting,
-    set_setting,
-    is_voice_enabled,
-    is_character_enabled,
-    add_settings_listener,
-)
-
-from theme import (
-    get_current_theme,
-    generate_qss,
-    apply_theme_to_app,
-    refresh_theme,
-    get_current_theme_id,
-    add_theme_listener,
-    is_dark_mode,
-)
-
-from app_paths import (
-    APP_DATA_DIR,
-    ICON_PATH,
-)
-
-from app_utils import (
-    clean_ai_reply,
-    format_status,
-    sanitize_user_text,
-)
-
-from skills.markdown_renderer import (
-    markdown_to_html,
-)
-
-from skills.chat_worker import (
-    StreamingWorker,
-    RegenerateWorker,
-)
-
-from activity_monitor import (
-    ActivityMonitor,
-    ActivityType,
-)
-
-from companion_behavior import (
-    CompanionBehaviorController,
-)
-
-from companion_intelligence import (
-    CompanionIntelligence,
-    CompanionMood,
-    UserState,
-    InterventionType,
-)
-
-from screen_awareness import (
-    ScreenAwareness,
-)
-
-from chat_sidebar import (
-    ChatSidebar,
-    save_conversations,
-    load_conversations,
-    generate_title_from_messages,
-)
-
-
-# ============================================================
-# AVORA SYSTEMS
-# ============================================================
-
-from avora_safety import (
-    initialize as init_safety,
-    is_panic,
-    trigger_panic,
-    clear_panic,
-    log_activity,
-)
-
-from avora_hotkey import (
-    initialize as init_hotkey,
-    stop_hotkey_listener,
-)
-
-from avora_clipboard import (
-    initialize as init_clipboard,
-    stop_clipboard_monitor,
-    get_history as get_clipboard_history,
-    search_history as search_clipboard,
-    clear_history as clear_clipboard,
-)
-
-from avora_automation import (
-    initialize as init_automation,
-    create_automation_task,
-    execute_automation_task,
-    cancel_automation_task,
-    get_all_tasks,
-)
-
-from core.bootstrap import (
-    get_bootstrap,
-)
-
 
 # ============================================================
 # VOICE RECOGNITION WORKER (Proper QThread)
@@ -237,7 +191,6 @@ class VoiceRecognitionWorker(QThread):
 
 
 class MainWindow(QWidget):
-
     # Used to control character talking animation.
     character_talking_signal = Signal(bool)
 
@@ -249,9 +202,7 @@ class MainWindow(QWidget):
         parent=None,
     ):
 
-        super().__init__(
-            parent
-        )
+        super().__init__(parent)
 
         # ====================================================
         # APPLICATION STATE
@@ -267,13 +218,9 @@ class MainWindow(QWidget):
 
         self.is_closing = False
 
-        self.voice_enabled = bool(
-            is_voice_enabled()
-        )
+        self.voice_enabled = bool(is_voice_enabled())
 
-        self.character_enabled = bool(
-            is_character_enabled()
-        )
+        self.character_enabled = bool(is_character_enabled())
 
         self.character = None
 
@@ -317,37 +264,21 @@ class MainWindow(QWidget):
         # SIGNALS
         # ====================================================
 
-        self.character_talking_signal.connect(
-            self.character_talking
-        )
+        self.character_talking_signal.connect(self.character_talking)
 
         # ====================================================
         # WINDOW
         # ====================================================
 
-        self.setWindowTitle(
-            "AVORA AI"
-        )
+        self.setWindowTitle("AVORA AI")
 
-        self.setWindowIcon(
-            QIcon(
-                str(ICON_PATH)
-            )
-        )
+        self.setWindowIcon(QIcon(str(ICON_PATH)))
 
-        self.setObjectName(
-            "MainWindow"
-        )
+        self.setObjectName("MainWindow")
 
-        self.resize(
-            1200,
-            800
-        )
+        self.resize(1200, 800)
 
-        self.setMinimumSize(
-            950,
-            700
-        )
+        self.setMinimumSize(950, 700)
 
         # ====================================================
         # UI
@@ -370,34 +301,20 @@ class MainWindow(QWidget):
         # ====================================================
 
         try:
-
-            add_settings_listener(
-                self.on_setting_changed
-            )
+            add_settings_listener(self.on_setting_changed)
 
         except Exception as error:
-
-            print(
-                "SETTINGS LISTENER ERROR:",
-                error
-            )
+            print("SETTINGS LISTENER ERROR:", error)
 
         # ====================================================
         # THEME LISTENER
         # ====================================================
 
         try:
-
-            add_theme_listener(
-                self.on_theme_changed
-            )
+            add_theme_listener(self.on_theme_changed)
 
         except Exception as error:
-
-            print(
-                "THEME LISTENER ERROR:",
-                error
-            )
+            print("THEME LISTENER ERROR:", error)
 
     # ========================================================
     # THEME CHANGE
@@ -408,23 +325,15 @@ class MainWindow(QWidget):
         theme,
     ):
 
-        self.setStyleSheet(
-            generate_qss()
-        )
+        self.setStyleSheet(generate_qss())
 
         # Refresh character theme colors
         if self.character is not None:
-
             try:
-
                 self.character.update_theme()
 
             except Exception as error:
-
-                print(
-                    "CHARACTER THEME ERROR:",
-                    error
-                )
+                print("CHARACTER THEME ERROR:", error)
 
     # ========================================================
     # STYLES
@@ -434,9 +343,7 @@ class MainWindow(QWidget):
         self,
     ):
 
-        self.setStyleSheet(
-            generate_qss()
-        )
+        self.setStyleSheet(generate_qss())
 
     # ========================================================
     # NEURAL BACKGROUND
@@ -450,16 +357,19 @@ class MainWindow(QWidget):
 
         # Create neural nodes
         import random
+
         self.neural_nodes = []
         for i in range(20):
-            self.neural_nodes.append({
-                "x": random.randint(0, self.width()),
-                "y": random.randint(0, self.height()),
-                "vx": random.uniform(-0.3, 0.3),
-                "vy": random.uniform(-0.3, 0.3),
-                "size": random.uniform(2.0, 5.0),
-                "opacity": random.uniform(0.3, 0.8),
-            })
+            self.neural_nodes.append(
+                {
+                    "x": random.randint(0, self.width()),
+                    "y": random.randint(0, self.height()),
+                    "vx": random.uniform(-0.3, 0.3),
+                    "vy": random.uniform(-0.3, 0.3),
+                    "size": random.uniform(2.0, 5.0),
+                    "opacity": random.uniform(0.3, 0.8),
+                }
+            )
 
         self.neural_timer = QTimer()
         self.neural_timer.timeout.connect(self.animate_neural_background)
@@ -544,7 +454,14 @@ class MainWindow(QWidget):
 
         # Draw connections
         max_dist = 180
-        painter.setPen(QColor(connection_color.red(), connection_color.green(), connection_color.blue(), 25))
+        painter.setPen(
+            QColor(
+                connection_color.red(),
+                connection_color.green(),
+                connection_color.blue(),
+                25,
+            )
+        )
         for i, node1 in enumerate(self.neural_nodes):
             for j, node2 in enumerate(self.neural_nodes):
                 if i >= j:
@@ -554,15 +471,31 @@ class MainWindow(QWidget):
                 dist = (dx * dx + dy * dy) ** 0.5
                 if dist < max_dist:
                     alpha = int(255 * (1 - dist / max_dist) * 0.15)
-                    painter.setPen(QColor(connection_color.red(), connection_color.green(), connection_color.blue(), alpha))
-                    painter.drawLine(int(node1["x"]), int(node1["y"]), int(node2["x"]), int(node2["y"]))
+                    painter.setPen(
+                        QColor(
+                            connection_color.red(),
+                            connection_color.green(),
+                            connection_color.blue(),
+                            alpha,
+                        )
+                    )
+                    painter.drawLine(
+                        int(node1["x"]),
+                        int(node1["y"]),
+                        int(node2["x"]),
+                        int(node2["y"]),
+                    )
 
         # Draw nodes
         painter.setBrush(node_color)
         for node in self.neural_nodes:
             alpha = int(255 * node.get("opacity", 0.5) * 0.6)
-            painter.setPen(QColor(node_color.red(), node_color.green(), node_color.blue(), alpha))
-            painter.drawEllipse(int(node["x"]), int(node["y"]), int(node["size"]), int(node["size"]))
+            painter.setPen(
+                QColor(node_color.red(), node_color.green(), node_color.blue(), alpha)
+            )
+            painter.drawEllipse(
+                int(node["x"]), int(node["y"]), int(node["size"]), int(node["size"])
+            )
 
         painter.end()
 
@@ -642,6 +575,7 @@ class MainWindow(QWidget):
             self.neural_canvas.setGeometry(self.rect())
             # Reinitialize nodes for new size
             import random
+
             w, h = self.width(), self.height()
             if w > 0 and h > 0:
                 for node in self.neural_nodes:
@@ -681,20 +615,11 @@ class MainWindow(QWidget):
         self,
     ):
 
-        main_layout = QHBoxLayout(
-            self
-        )
+        main_layout = QHBoxLayout(self)
 
-        main_layout.setContentsMargins(
-            0,
-            0,
-            0,
-            0
-        )
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        main_layout.setSpacing(
-            0
-        )
+        main_layout.setSpacing(0)
 
         # ====================================================
         # SIDEBAR
@@ -702,13 +627,9 @@ class MainWindow(QWidget):
 
         self.sidebar = QFrame()
 
-        self.sidebar.setObjectName(
-            "Sidebar"
-        )
+        self.sidebar.setObjectName("Sidebar")
 
-        self.sidebar.setFixedWidth(
-            290
-        )
+        self.sidebar.setFixedWidth(290)
 
         self.apply_shadow(
             self.sidebar,
@@ -717,32 +638,19 @@ class MainWindow(QWidget):
             alpha=90,
         )
 
-        sidebar_layout = QVBoxLayout(
-            self.sidebar
-        )
+        sidebar_layout = QVBoxLayout(self.sidebar)
 
-        sidebar_layout.setContentsMargins(
-            18,
-            18,
-            18,
-            16
-        )
+        sidebar_layout.setContentsMargins(18, 18, 18, 16)
 
-        sidebar_layout.setSpacing(
-            8
-        )
+        sidebar_layout.setSpacing(8)
 
         # ====================================================
         # LOGO
         # ====================================================
 
-        logo = QLabel(
-            "✦  AVORA"
-        )
+        logo = QLabel("✦  AVORA")
 
-        logo.setObjectName(
-            "Logo"
-        )
+        logo.setObjectName("Logo")
 
         logo.setStyleSheet("""
             font-size: 26px;
@@ -751,13 +659,9 @@ class MainWindow(QWidget):
             padding: 5px 0;
         """)
 
-        subtitle = QLabel(
-            "Intelligence, redefined."
-        )
+        subtitle = QLabel("Intelligence, redefined.")
 
-        subtitle.setObjectName(
-            "SubText"
-        )
+        subtitle.setObjectName("SubText")
 
         subtitle.setStyleSheet("""
             font-size: 11px;
@@ -766,37 +670,23 @@ class MainWindow(QWidget):
             font-weight: 500;
         """)
 
-        sidebar_layout.addWidget(
-            logo
-        )
+        sidebar_layout.addWidget(logo)
 
-        sidebar_layout.addWidget(
-            subtitle
-        )
+        sidebar_layout.addWidget(subtitle)
 
-        sidebar_layout.addSpacing(
-            30
-        )
+        sidebar_layout.addSpacing(30)
 
         # ====================================================
         # NEW CHAT
         # ====================================================
 
-        self.new_chat_button = QPushButton(
-            "＋   New Conversation"
-        )
+        self.new_chat_button = QPushButton("＋   New Conversation")
 
-        self.new_chat_button.setObjectName(
-            "NewChatButton"
-        )
+        self.new_chat_button.setObjectName("NewChatButton")
 
-        self.new_chat_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        self.new_chat_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.new_chat_button.clicked.connect(
-            self.create_new_chat
-        )
+        self.new_chat_button.clicked.connect(self.create_new_chat)
 
         self.new_chat_button.setStyleSheet("""
             QPushButton {
@@ -819,9 +709,7 @@ class MainWindow(QWidget):
             }
         """)
 
-        sidebar_layout.addWidget(
-            self.new_chat_button
-        )
+        sidebar_layout.addWidget(self.new_chat_button)
 
         # ====================================================
         # VOICE
@@ -829,80 +717,50 @@ class MainWindow(QWidget):
 
         self.voice_button = QPushButton()
 
-        self.voice_button.setObjectName(
-            "VoiceButton"
-        )
+        self.voice_button.setObjectName("VoiceButton")
 
-        self.voice_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        self.voice_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.voice_button.clicked.connect(
-            self.toggle_voice
-        )
+        self.voice_button.clicked.connect(self.toggle_voice)
 
         self.update_voice_button()
 
-        sidebar_layout.addWidget(
-            self.voice_button
-        )
+        sidebar_layout.addWidget(self.voice_button)
 
         # ====================================================
         # SETTINGS
         # ====================================================
 
-        self.settings_button = QPushButton(
-            "⚙️   Settings"
-        )
+        self.settings_button = QPushButton("⚙️   Settings")
 
-        self.settings_button.setObjectName(
-            "SettingsButton"
-        )
+        self.settings_button.setObjectName("SettingsButton")
 
-        self.settings_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.settings_button.clicked.connect(
-            self.open_settings
-        )
+        self.settings_button.clicked.connect(self.open_settings)
 
-        sidebar_layout.addWidget(
-            self.settings_button
-        )
+        sidebar_layout.addWidget(self.settings_button)
 
-        sidebar_layout.addSpacing(
-            10
-        )
+        sidebar_layout.addSpacing(10)
 
         # ====================================================
         # CHAT SIDEBAR (RECENT CHATS)
         # ====================================================
 
-        self.chat_sidebar = ChatSidebar(
-            self.sidebar
-        )
+        self.chat_sidebar = ChatSidebar(self.sidebar)
 
-        self.chat_sidebar.chat_selected.connect(
-            self.switch_chat
-        )
+        self.chat_sidebar.chat_selected.connect(self.switch_chat)
 
-        self.chat_sidebar.new_chat_requested.connect(
-            self.create_new_chat
-        )
+        self.chat_sidebar.new_chat_requested.connect(self.create_new_chat)
 
-        self.chat_sidebar.chat_deleted.connect(
-            self._on_chat_deleted
-        )
+        self.chat_sidebar.chat_deleted.connect(self._on_chat_deleted)
 
         sidebar_layout.addWidget(
             self.chat_sidebar,
             1,
         )
 
-        sidebar_layout.addSpacing(
-            15
-        )
+        sidebar_layout.addSpacing(15)
 
         sidebar_layout.addStretch()
 
@@ -912,24 +770,13 @@ class MainWindow(QWidget):
 
         right_side = QFrame()
 
-        right_side.setObjectName(
-            "RightSide"
-        )
+        right_side.setObjectName("RightSide")
 
-        right_layout = QVBoxLayout(
-            right_side
-        )
+        right_layout = QVBoxLayout(right_side)
 
-        right_layout.setContentsMargins(
-            0,
-            0,
-            0,
-            0
-        )
+        right_layout.setContentsMargins(0, 0, 0, 0)
 
-        right_layout.setSpacing(
-            0
-        )
+        right_layout.setSpacing(0)
 
         # ====================================================
         # HEADER
@@ -937,45 +784,23 @@ class MainWindow(QWidget):
 
         header = QFrame()
 
-        header.setObjectName(
-            "Header"
-        )
+        header.setObjectName("Header")
 
-        header.setFixedHeight(
-            70
-        )
+        header.setFixedHeight(70)
 
-        header_layout = QHBoxLayout(
-            header
-        )
+        header_layout = QHBoxLayout(header)
 
-        header_layout.setContentsMargins(
-            25,
-            0,
-            25,
-            0
-        )
+        header_layout.setContentsMargins(25, 0, 25, 0)
 
-        header_title = QLabel(
-            "AVORA"
-        )
+        header_title = QLabel("AVORA")
 
-        header_title.setObjectName(
-            "HeaderTitle"
-        )
+        header_title.setObjectName("HeaderTitle")
 
-        header_layout.addWidget(
-            header_title
-        )
+        header_layout.addWidget(header_title)
 
-        header_layout.setAlignment(
-            header_title,
-            Qt.AlignmentFlag.AlignCenter
-        )
+        header_layout.setAlignment(header_title, Qt.AlignmentFlag.AlignCenter)
 
-        right_layout.addWidget(
-            header
-        )
+        right_layout.addWidget(header)
 
         # ====================================================
         # CHAT AREA
@@ -983,17 +808,11 @@ class MainWindow(QWidget):
 
         self.chat_area = QScrollArea()
 
-        self.chat_area.setObjectName(
-            "ChatArea"
-        )
+        self.chat_area.setObjectName("ChatArea")
 
-        self.chat_area.setWidgetResizable(
-            True
-        )
+        self.chat_area.setWidgetResizable(True)
 
-        self.chat_area.setFrameShape(
-            QFrame.Shape.NoFrame
-        )
+        self.chat_area.setFrameShape(QFrame.Shape.NoFrame)
 
         self.chat_area.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
@@ -1001,35 +820,19 @@ class MainWindow(QWidget):
 
         self.message_widget = QWidget()
 
-        self.message_widget.setObjectName(
-            "MessageArea"
-        )
+        self.message_widget.setObjectName("MessageArea")
 
-        self.message_layout = QVBoxLayout(
-            self.message_widget
-        )
+        self.message_layout = QVBoxLayout(self.message_widget)
 
-        self.message_layout.setContentsMargins(
-            36,
-            24,
-            36,
-            24
-        )
+        self.message_layout.setContentsMargins(36, 24, 36, 24)
 
-        self.message_layout.setSpacing(
-            18
-        )
+        self.message_layout.setSpacing(18)
 
         self.message_layout.addStretch()
 
-        self.chat_area.setWidget(
-            self.message_widget
-        )
+        self.chat_area.setWidget(self.message_widget)
 
-        right_layout.addWidget(
-            self.chat_area,
-            1
-        )
+        right_layout.addWidget(self.chat_area, 1)
 
         # ====================================================
         # INPUT
@@ -1037,26 +840,15 @@ class MainWindow(QWidget):
 
         input_outer = QFrame()
 
-        input_outer.setFixedHeight(
-            96
-        )
+        input_outer.setFixedHeight(96)
 
-        input_layout = QHBoxLayout(
-            input_outer
-        )
+        input_layout = QHBoxLayout(input_outer)
 
-        input_layout.setContentsMargins(
-            18,
-            12,
-            18,
-            18
-        )
+        input_layout.setContentsMargins(18, 12, 18, 18)
 
         self.input_container = QFrame()
 
-        self.input_container.setObjectName(
-            "InputContainer"
-        )
+        self.input_container.setObjectName("InputContainer")
 
         self.apply_shadow(
             self.input_container,
@@ -1065,136 +857,71 @@ class MainWindow(QWidget):
             alpha=100,
         )
 
-        input_container_layout = QHBoxLayout(
-            self.input_container
-        )
+        input_container_layout = QHBoxLayout(self.input_container)
 
-        input_container_layout.setContentsMargins(
-            10,
-            6,
-            10,
-            6
-        )
+        input_container_layout.setContentsMargins(10, 6, 10, 6)
 
         self.user_input = QLineEdit()
 
-        self.user_input.setObjectName(
-            "InputBox"
-        )
+        self.user_input.setObjectName("InputBox")
 
-        self.user_input.setPlaceholderText(
-            "Message your AI Friend..."
-        )
+        self.user_input.setPlaceholderText("Message your AI Friend...")
 
-        self.user_input.returnPressed.connect(
-            self.send_message
-        )
+        self.user_input.returnPressed.connect(self.send_message)
 
-        self.send_button = QPushButton(
-            "➤"
-        )
+        self.send_button = QPushButton("➤")
 
-        self.send_button.setObjectName(
-            "SendButton"
-        )
+        self.send_button.setObjectName("SendButton")
 
-        self.send_button.setFixedSize(
-            48,
-            42
-        )
+        self.send_button.setFixedSize(48, 42)
 
-        self.send_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        self.send_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.send_button.clicked.connect(
-            self.send_message
-        )
+        self.send_button.clicked.connect(self.send_message)
 
-        input_container_layout.addWidget(
-            self.user_input,
-            1
-        )
+        input_container_layout.addWidget(self.user_input, 1)
 
-        input_container_layout.addWidget(
-            self.send_button
-        )
+        input_container_layout.addWidget(self.send_button)
 
-        self.attach_button = QPushButton(
-            "📎"
-        )
+        self.attach_button = QPushButton("📎")
 
-        self.attach_button.setObjectName(
-            "AttachButton"
-        )
+        self.attach_button.setObjectName("AttachButton")
 
-        self.attach_button.setFixedSize(
-            42,
-            42
-        )
+        self.attach_button.setFixedSize(42, 42)
 
-        self.attach_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        self.attach_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.attach_button.clicked.connect(
-            self._attach_file
-        )
+        self.attach_button.clicked.connect(self._attach_file)
 
         self.attached_files = []
 
-        input_container_layout.addWidget(
-            self.attach_button
-        )
+        input_container_layout.addWidget(self.attach_button)
 
-        self.mic_button = QPushButton(
-            "🎤"
-        )
+        self.mic_button = QPushButton("🎤")
 
-        self.mic_button.setObjectName(
-            "MicButton"
-        )
+        self.mic_button.setObjectName("MicButton")
 
-        self.mic_button.setFixedSize(
-            48,
-            42
-        )
+        self.mic_button.setFixedSize(48, 42)
 
-        self.mic_button.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        self.mic_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.mic_button.clicked.connect(
-            self.toggle_voice_input
-        )
+        self.mic_button.clicked.connect(self.toggle_voice_input)
 
         self.is_listening = False
 
-        input_container_layout.addWidget(
-            self.mic_button
-        )
+        input_container_layout.addWidget(self.mic_button)
 
+        input_layout.addWidget(self.input_container)
 
-        input_layout.addWidget(
-            self.input_container
-        )
-
-        right_layout.addWidget(
-            input_outer
-        )
+        right_layout.addWidget(input_outer)
 
         # ====================================================
         # ADD TO WINDOW
         # ====================================================
 
-        main_layout.addWidget(
-            self.sidebar
-        )
+        main_layout.addWidget(self.sidebar)
 
-        main_layout.addWidget(
-            right_side,
-            1
-        )
+        main_layout.addWidget(right_side, 1)
 
         # ====================================================
         # WELCOME MESSAGE
@@ -1205,9 +932,7 @@ class MainWindow(QWidget):
             "Ready",
         )
 
-        self.add_ai_message_rich(
-            "Hey bro! 👋 Good to see you."
-        )
+        self.add_ai_message_rich("Hey bro! 👋 Good to see you.")
 
     # ========================================================
     # STYLES
@@ -1221,13 +946,9 @@ class MainWindow(QWidget):
         alpha=120,
     ):
 
-        effect = QGraphicsDropShadowEffect(
-            widget
-        )
+        effect = QGraphicsDropShadowEffect(widget)
 
-        effect.setBlurRadius(
-            blur
-        )
+        effect.setBlurRadius(blur)
 
         effect.setOffset(
             0,
@@ -1243,9 +964,7 @@ class MainWindow(QWidget):
             )
         )
 
-        widget.setGraphicsEffect(
-            effect
-        )
+        widget.setGraphicsEffect(effect)
 
         return effect
 
@@ -1258,83 +977,55 @@ class MainWindow(QWidget):
     ):
 
         if not self.character_enabled:
-
             self.character = None
 
             return
 
         try:
-
-            self.character = Character(
-                parent=self
-            )
+            self.character = Character(parent=self)
 
         except TypeError:
-
             try:
-
                 self.character = Character()
 
-                self.character.setParent(
-                    self
-                )
+                self.character.setParent(self)
 
             except Exception as error:
-
-                print(
-                    "CHARACTER CREATION ERROR:",
-                    error
-                )
+                print("CHARACTER CREATION ERROR:", error)
 
                 self.character = None
 
                 return
 
         except Exception as error:
-
-            print(
-                "CHARACTER CREATION ERROR:",
-                error
-            )
+            print("CHARACTER CREATION ERROR:", error)
 
             self.character = None
 
             return
 
-        self.character.setParent(
-            self
-        )
+        self.character.setParent(self)
 
         self.character.show()
 
         self.character.raise_()
 
-        self.character.clicked.connect(
-            self._on_character_clicked
-        )
+        self.character.clicked.connect(self._on_character_clicked)
 
-        self.character.restore_requested.connect(
-            self.save_companion_position
-        )
+        self.character.restore_requested.connect(self.save_companion_position)
 
-        self.character_talking_signal.connect(
-            self.character_talking
-        )
+        self.character_talking_signal.connect(self.character_talking)
 
-        self._activity_changed_signal.connect(
-            self._apply_companion_observation
-        )
+        self._activity_changed_signal.connect(self._apply_companion_observation)
 
         self.position_character()
 
         try:
-
             self.character.apply_companion_settings()
 
             self.restore_companion_position()
 
         except Exception:
-
             pass
 
     # ========================================================
@@ -1348,9 +1039,7 @@ class MainWindow(QWidget):
                 check_interval=5.0,
                 idle_threshold_minutes=3.0,
             )
-            self.activity_monitor.add_listener(
-                self.on_activity_changed
-            )
+            self.activity_monitor.add_listener(self.on_activity_changed)
             self.activity_monitor.start()
             print("[ACTIVITY] Monitor started")
         except Exception as e:
@@ -1378,9 +1067,15 @@ class MainWindow(QWidget):
                 self.companion.set_personality(personality)
 
                 # Run the companion cycle
-                activity_name = activity.value if hasattr(activity, 'value') else str(activity)
-                idle_minutes = self.activity_monitor.idle_minutes if self.activity_monitor else 0.0
-                process_name = self.activity_monitor.process_name if self.activity_monitor else ""
+                activity_name = (
+                    activity.value if hasattr(activity, "value") else str(activity)
+                )
+                idle_minutes = (
+                    self.activity_monitor.idle_minutes if self.activity_monitor else 0.0
+                )
+                process_name = (
+                    self.activity_monitor.process_name if self.activity_monitor else ""
+                )
 
                 observation = self.companion.cycle(
                     activity_type=activity_name,
@@ -1392,7 +1087,9 @@ class MainWindow(QWidget):
                 )
 
                 # Marshal observation to main thread for UI updates
-                self._activity_changed_signal.emit(observation if isinstance(observation, dict) else {})
+                self._activity_changed_signal.emit(
+                    observation if isinstance(observation, dict) else {}
+                )
         except Exception as e:
             print("[COMPANION] Cycle error:", e)
 
@@ -1403,8 +1100,11 @@ class MainWindow(QWidget):
 
         # 1. Update character emotion
         if self.character is not None:
-            mood_value = observation.get("mood", CompanionMood.NEUTRAL).value if hasattr(
-                observation.get("mood"), "value") else str(observation.get("mood", "neutral"))
+            mood_value = (
+                observation.get("mood", CompanionMood.NEUTRAL).value
+                if hasattr(observation.get("mood"), "value")
+                else str(observation.get("mood", "neutral"))
+            )
             intensity = observation.get("mood_intensity", 0.5)
 
             # Check for intervention
@@ -1414,18 +1114,21 @@ class MainWindow(QWidget):
                 message = intervention.get("message")
 
                 if message and observation.get("silent_mode") is False:
-                    self.character_call("react_naturally", mood_value, intensity,
-                                       False, message)
+                    self.character_call(
+                        "react_naturally", mood_value, intensity, False, message
+                    )
                     if self.behavior_controller is not None:
                         self.behavior_controller.show_speech_bubble(message)
                 else:
                     # Silent awareness - just change expression
-                    self.character_call("react_naturally", mood_value, intensity,
-                                       True, None)
+                    self.character_call(
+                        "react_naturally", mood_value, intensity, True, None
+                    )
             else:
                 # No intervention - just update expression silently
-                self.character_call("react_naturally", mood_value, intensity,
-                                   True, None)
+                self.character_call(
+                    "react_naturally", mood_value, intensity, True, None
+                )
 
             # Handle achievements
             achievement = observation.get("new_achievement")
@@ -1440,7 +1143,9 @@ class MainWindow(QWidget):
         # 2. Update status label with user state
         user_state = observation.get("user_state")
         if user_state:
-            state_label = user_state.value if hasattr(user_state, 'value') else str(user_state)
+            state_label = (
+                user_state.value if hasattr(user_state, "value") else str(user_state)
+            )
             self.update_status("ready", f"Companion - {state_label}")
 
     def start_companion(self):
@@ -1462,8 +1167,9 @@ class MainWindow(QWidget):
     def start_screen_awareness(self):
         """Initialize and start the Screen Awareness system."""
         try:
-            if not hasattr(self, 'screen_awareness') or self.screen_awareness is None:
+            if not hasattr(self, "screen_awareness") or self.screen_awareness is None:
                 from screen_awareness import ScreenAwareness
+
                 self.screen_awareness = ScreenAwareness(main_window=self)
             self.screen_awareness.start()
             print("[SCREEN AWARENESS] Started")
@@ -1472,7 +1178,7 @@ class MainWindow(QWidget):
 
     def stop_screen_awareness(self):
         """Stop the screen awareness system."""
-        if hasattr(self, 'screen_awareness') and self.screen_awareness is not None:
+        if hasattr(self, "screen_awareness") and self.screen_awareness is not None:
             try:
                 self.screen_awareness.stop()
                 print("[SCREEN AWARENESS] Stopped")
@@ -1512,14 +1218,16 @@ class MainWindow(QWidget):
             return
         try:
             activity = self.activity_monitor.current_activity
-            activity_name = activity.value if hasattr(activity, 'value') else str(activity)
+            activity_name = (
+                activity.value if hasattr(activity, "value") else str(activity)
+            )
             observation = self.companion.cycle(
                 activity_type=activity_name,
                 window_title=self.activity_monitor.window_title,
                 process_name=self.activity_monitor.process_name,
                 idle_minutes=self.activity_monitor.idle_minutes,
                 is_processing=self.is_processing,
-                is_voice_active=getattr(self, 'is_listening', False),
+                is_voice_active=getattr(self, "is_listening", False),
             )
             self._apply_companion_observation(observation)
         except Exception as e:
@@ -1538,13 +1246,10 @@ class MainWindow(QWidget):
     ):
 
         try:
-
             from settings_ui import SettingsWindow
 
             if self.settings_window is not None:
-
                 try:
-
                     self.settings_window.show()
 
                     self.settings_window.raise_()
@@ -1554,14 +1259,11 @@ class MainWindow(QWidget):
                     return
 
                 except RuntimeError:
-
                     self.settings_window = None
 
             self.settings_window = SettingsWindow()
 
-            self.settings_window.setWindowTitle(
-                "AI Friend Settings"
-            )
+            self.settings_window.setWindowTitle("AI Friend Settings")
 
             self.settings_window.setMinimumSize(
                 950,
@@ -1578,13 +1280,9 @@ class MainWindow(QWidget):
                 False,
             )
 
-            self.settings_window.settings_changed.connect(
-                self.on_setting_changed
-            )
+            self.settings_window.settings_changed.connect(self.on_setting_changed)
 
-            self.settings_window.navigate_back.connect(
-                self.back_to_chat
-            )
+            self.settings_window.navigate_back.connect(self.back_to_chat)
 
             screen = self.screen()
             if screen is None:
@@ -1605,32 +1303,18 @@ class MainWindow(QWidget):
             self.settings_window.activateWindow()
 
         except ImportError as error:
-
-            print(
-                "SETTINGS IMPORT ERROR:",
-                error
-            )
+            print("SETTINGS IMPORT ERROR:", error)
 
             QMessageBox.warning(
-                self,
-                "Settings Error",
-                "settings_ui.py could not be loaded."
+                self, "Settings Error", "settings_ui.py could not be loaded."
             )
 
         except Exception as error:
-
-            print(
-                "SETTINGS WINDOW ERROR:",
-                error
-            )
+            print("SETTINGS WINDOW ERROR:", error)
 
             traceback.print_exc()
 
-            QMessageBox.warning(
-                self,
-                "Settings Error",
-                str(error)
-            )
+            QMessageBox.warning(self, "Settings Error", str(error))
 
     # ========================================================
     # BACK TO CHAT
@@ -1641,17 +1325,13 @@ class MainWindow(QWidget):
     ):
 
         if self.settings_window is not None:
-
             try:
-
                 self.settings_window.hide()
 
             except Exception:
-
                 pass
 
         if self.character is not None:
-
             self.character.show()
 
             self.character.raise_()
@@ -1666,7 +1346,6 @@ class MainWindow(QWidget):
         self,
         *args,
     ):
-
         """
         Supports both:
 
@@ -1680,7 +1359,6 @@ class MainWindow(QWidget):
         """
 
         if len(args) == 2:
-
             path = args[0]
 
             new_value = args[1]
@@ -1688,7 +1366,6 @@ class MainWindow(QWidget):
             old_value = None
 
         elif len(args) >= 3:
-
             path = args[0]
 
             old_value = args[1]
@@ -1696,58 +1373,40 @@ class MainWindow(QWidget):
             new_value = args[2]
 
         else:
-
             return
 
-        print(
-            f"SETTING CHANGED: "
-            f"{path} "
-            f"{old_value} -> "
-            f"{new_value}"
-        )
+        print(f"SETTING CHANGED: {path} {old_value} -> {new_value}")
 
         # ----------------------------------------------------
         # VOICE
         # ----------------------------------------------------
 
         if path == "voice.enabled":
-
-            self.voice_enabled = bool(
-                new_value
-            )
+            self.voice_enabled = bool(new_value)
 
             self.update_voice_button()
 
             if not self.voice_enabled:
-
                 try:
-
                     stop_speaking()
 
                 except Exception:
-
                     pass
 
-                self.character_talking_signal.emit(
-                    False
-                )
+                self.character_talking_signal.emit(False)
 
         # ----------------------------------------------------
         # CHARACTER
         # ----------------------------------------------------
 
         elif path == "character.enabled":
-
-            self.update_character_visibility(
-                bool(new_value)
-            )
+            self.update_character_visibility(bool(new_value))
 
         # ----------------------------------------------------
         # VOICE AUTO STOP
         # ----------------------------------------------------
 
         elif path == "voice.auto_stop_previous":
-
             pass
 
         # ----------------------------------------------------
@@ -1755,23 +1414,17 @@ class MainWindow(QWidget):
         # ----------------------------------------------------
 
         elif path == "character.size":
-
-            self.apply_character_size(
-                new_value
-            )
+            self.apply_character_size(new_value)
 
         # ----------------------------------------------------
         # SCREEN AWARENESS
         # ----------------------------------------------------
 
         elif path == "screen_awareness.enabled":
-
             if new_value:
-
                 self.start_screen_awareness()
 
             else:
-
                 self.stop_screen_awareness()
 
         # ----------------------------------------------------
@@ -1779,40 +1432,24 @@ class MainWindow(QWidget):
         # ----------------------------------------------------
 
         elif path == "companion_widget.enabled":
-
-            self.update_companion_visibility(
-                bool(new_value)
-            )
+            self.update_companion_visibility(bool(new_value))
 
         elif path == "companion_widget.size":
-
-            self.apply_companion_size(
-                new_value
-            )
+            self.apply_companion_size(new_value)
 
         elif path == "companion_widget.glow_intensity":
-
-            self.apply_companion_glow(
-                new_value
-            )
+            self.apply_companion_glow(new_value)
 
         elif path == "companion_widget.glow_color":
-
-            self.apply_companion_glow_color(
-                new_value
-            )
+            self.apply_companion_glow_color(new_value)
 
         elif path == "companion_widget.animation":
-
-            self.apply_companion_animation(
-                new_value
-            )
+            self.apply_companion_animation(new_value)
 
         elif path in {
             "companion_widget.position_x",
             "companion_widget.position_y",
         }:
-
             self.restore_companion_position()
 
     # ========================================================
@@ -1825,37 +1462,26 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         try:
-
             size = float(value)
 
         except Exception:
-
             return
 
         method = getattr(
             self.character,
             "set_character_size",
-            getattr(self.character, "set_scale_factor", None)
+            getattr(self.character, "set_scale_factor", None),
         )
 
         if callable(method):
-
             try:
-
-                method(
-                    size
-                )
+                method(size)
 
             except Exception as error:
-
-                print(
-                    "CHARACTER SIZE ERROR:",
-                    error
-                )
+                print("CHARACTER SIZE ERROR:", error)
 
         self.position_character()
 
@@ -1869,11 +1495,9 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         if enabled:
-
             self.character.show()
 
             self.character.raise_()
@@ -1881,7 +1505,6 @@ class MainWindow(QWidget):
             self.restore_companion_position()
 
         else:
-
             self.character.hide()
 
     def apply_companion_size(
@@ -1889,38 +1512,40 @@ class MainWindow(QWidget):
         value,
     ):
 
-        if self.character is None:
+        # Keep character.size in sync so both size controls share one
+        # source of truth (fixes the two-key size conflict).
+        try:
+            from settings import set_setting
 
+            set_setting(
+                "character.size",
+                float(value),
+            )
+
+        except Exception:
+            pass
+
+        if self.character is None:
             return
 
         try:
-
             size = float(value)
 
         except Exception:
-
             return
 
         method = getattr(
             self.character,
             "set_character_size",
-            getattr(self.character, "set_scale_factor", None)
+            getattr(self.character, "set_scale_factor", None),
         )
 
         if callable(method):
-
             try:
-
-                method(
-                    size
-                )
+                method(size)
 
             except Exception as error:
-
-                print(
-                    "COMPANION SIZE ERROR:",
-                    error
-                )
+                print("COMPANION SIZE ERROR:", error)
 
         self.position_character()
 
@@ -1930,26 +1555,21 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         try:
-
             intensity = float(value)
 
         except Exception:
-
             return
 
         try:
-
             self.character.update_glow(
                 intensity,
                 self.character._last_glow_color or "#00FF88",
             )
 
         except Exception:
-
             pass
 
     def apply_companion_glow_color(
@@ -1958,11 +1578,9 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         try:
-
             from settings import get_setting
 
             intensity = float(
@@ -1973,11 +1591,9 @@ class MainWindow(QWidget):
             )
 
         except Exception:
-
             intensity = 0.5
 
         try:
-
             self.character.update_glow(
                 intensity,
                 str(value),
@@ -1986,7 +1602,6 @@ class MainWindow(QWidget):
             self.character._last_glow_color = str(value)
 
         except Exception:
-
             pass
 
     def apply_companion_animation(
@@ -1995,17 +1610,12 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         try:
-
-            self.character.update_animation(
-                str(value)
-            )
+            self.character.update_animation(str(value))
 
         except Exception:
-
             pass
 
     def save_companion_position(
@@ -2013,11 +1623,9 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         try:
-
             from settings import set_setting
 
             pos = self.character.pos()
@@ -2033,7 +1641,6 @@ class MainWindow(QWidget):
             )
 
         except Exception:
-
             pass
 
     def restore_companion_position(
@@ -2041,11 +1648,9 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         try:
-
             from settings import get_setting
 
             x = float(
@@ -2063,13 +1668,11 @@ class MainWindow(QWidget):
             )
 
         except Exception:
-
             x = -1
 
             y = -1
 
         if x < 0 or y < 0:
-
             margin = 12
 
             x = margin
@@ -2097,16 +1700,10 @@ class MainWindow(QWidget):
     ):
 
         if self.voice_enabled:
-
-            self.voice_button.setText(
-                "🔊  Voice: ON"
-            )
+            self.voice_button.setText("🔊  Voice: ON")
 
         else:
-
-            self.voice_button.setText(
-                "🔇  Voice: OFF"
-            )
+            self.voice_button.setText("🔇  Voice: OFF")
 
     # ========================================================
     # STATUS
@@ -2119,7 +1716,6 @@ class MainWindow(QWidget):
     ):
 
         if self.status_label is None:
-
             return
 
         label = message or format_status(
@@ -2127,38 +1723,22 @@ class MainWindow(QWidget):
             "Ready",
         )
 
-        self.status_label.setText(
-            f"● {label}"
-        )
+        self.status_label.setText(f"● {label}")
 
         if state == "error":
-
-            self.status_label.setStyleSheet(
-                "color: #FF6B6B;"
-            )
+            self.status_label.setStyleSheet("color: #FF6B6B;")
 
         elif state in {"thinking", "speaking", "listening"}:
-
-            self.status_label.setStyleSheet(
-                "color: #FFD166;"
-            )
+            self.status_label.setStyleSheet("color: #FFD166;")
 
         else:
-
-            self.status_label.setStyleSheet(
-                "color: #65E6A5;"
-            )
+            self.status_label.setStyleSheet("color: #65E6A5;")
 
         if self.character is not None:
-
             try:
-
-                self.character.set_ai_state(
-                    state
-                )
+                self.character.set_ai_state(state)
 
             except Exception:
-
                 pass
 
     # ========================================================
@@ -2172,32 +1752,19 @@ class MainWindow(QWidget):
         self.voice_enabled = not self.voice_enabled
 
         try:
-
-            set_setting(
-                "voice.enabled",
-                self.voice_enabled
-            )
+            set_setting("voice.enabled", self.voice_enabled)
 
         except Exception as error:
-
-            print(
-                "VOICE SETTING ERROR:",
-                error
-            )
+            print("VOICE SETTING ERROR:", error)
 
         if not self.voice_enabled:
-
             try:
-
                 stop_speaking()
 
             except Exception:
-
                 pass
 
-            self.character_talking_signal.emit(
-                False
-            )
+            self.character_talking_signal.emit(False)
 
         self.update_voice_button()
 
@@ -2230,37 +1797,26 @@ class MainWindow(QWidget):
                 self,
                 "Microphone Error",
                 "Could not start microphone recording.\n\n"
-                "Please check your microphone device."
+                "Please check your microphone device.",
             )
             return
 
         self.is_listening = True
 
-        self.mic_button.setText(
-            "🔴"
-        )
+        self.mic_button.setText("🔴")
 
-        self.mic_button.setProperty(
-            "listening",
-            True
-        )
+        self.mic_button.setProperty("listening", True)
 
-        self.mic_button.style().unpolish(
-            self.mic_button
-        )
+        self.mic_button.style().unpolish(self.mic_button)
 
-        self.mic_button.style().polish(
-            self.mic_button
-        )
+        self.mic_button.style().polish(self.mic_button)
 
         self.update_status(
             "listening",
             "Listening...",
         )
 
-        self.user_input.setPlaceholderText(
-            "Listening... speak now"
-        )
+        self.user_input.setPlaceholderText("Listening... speak now")
 
     def stop_voice_input(
         self,
@@ -2268,37 +1824,24 @@ class MainWindow(QWidget):
 
         self.is_listening = False
 
-        self.mic_button.setText(
-            "🎤"
-        )
+        self.mic_button.setText("🎤")
 
-        self.mic_button.setProperty(
-            "listening",
-            False
-        )
+        self.mic_button.setProperty("listening", False)
 
-        self.mic_button.style().unpolish(
-            self.mic_button
-        )
+        self.mic_button.style().unpolish(self.mic_button)
 
-        self.mic_button.style().polish(
-            self.mic_button
-        )
+        self.mic_button.style().polish(self.mic_button)
 
         self.update_status(
             "ready",
             "Ready",
         )
 
-        self.user_input.setPlaceholderText(
-            "Message your AI Friend..."
-        )
+        self.user_input.setPlaceholderText("Message your AI Friend...")
 
         # Stop recording and recognize in a background thread
         self.voice_input_worker = VoiceRecognitionWorker()
-        self.voice_input_worker.result_ready.connect(
-            self._on_voice_recognition_done
-        )
+        self.voice_input_worker.result_ready.connect(self._on_voice_recognition_done)
         self.voice_input_worker.start()
 
     def _on_voice_recognition_done(
@@ -2311,20 +1854,13 @@ class MainWindow(QWidget):
             self.voice_input_worker = None
 
         if text:
-
-            self.user_input.setText(
-                str(text)
-            )
+            self.user_input.setText(str(text))
 
             self.user_input.setFocus()
 
         else:
-
             QMessageBox.warning(
-                self,
-                "Microphone",
-                "Could not understand audio.\n\n"
-                "Please try again."
+                self, "Microphone", "Could not understand audio.\n\nPlease try again."
             )
 
     # ========================================================
@@ -2336,18 +1872,13 @@ class MainWindow(QWidget):
         enabled,
     ):
 
-        self.character_enabled = bool(
-            enabled
-        )
+        self.character_enabled = bool(enabled)
 
         if self.character_enabled:
-
             if self.character is None:
-
                 self.create_character()
 
             else:
-
                 self.character.show()
 
                 self.character.raise_()
@@ -2355,22 +1886,16 @@ class MainWindow(QWidget):
                 self.position_character()
 
         else:
-
             if self.character is not None:
-
                 self.character.hide()
 
                 try:
-
                     stop_speaking()
 
                 except Exception:
-
                     pass
 
-                self.character_talking_signal.emit(
-                    False
-                )
+                self.character_talking_signal.emit(False)
 
     # ========================================================
     # SAFE CHARACTER METHOD
@@ -2383,32 +1908,18 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
-        method = getattr(
-            self.character,
-            method_name,
-            None
-        )
+        method = getattr(self.character, method_name, None)
 
         if not callable(method):
-
             return
 
         try:
-
-            method(
-                *args
-            )
+            method(*args)
 
         except Exception as error:
-
-            print(
-                f"CHARACTER ERROR "
-                f"({method_name}):",
-                error
-            )
+            print(f"CHARACTER ERROR ({method_name}):", error)
 
     # ========================================================
     # CHARACTER TALKING
@@ -2420,42 +1931,34 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
-        self.character_call(
-            "set_talking",
-            bool(talking)
-        )
+        self.character_call("set_talking", bool(talking))
 
         if not talking:
-
-            QTimer.singleShot(
-                700,
-                self.return_to_idle
-            )
+            QTimer.singleShot(700, self.return_to_idle)
 
     def _animate_widget_entrance(self, widget):
         """Animate widget fading/sliding in."""
         try:
-            from PySide6.QtCore import QPropertyAnimation, QEasingCurve
-            
+            from PySide6.QtCore import QEasingCurve, QPropertyAnimation
+
             widget.setWindowOpacity(0.0)
             current_pos = widget.pos()
             widget.move(current_pos.x(), current_pos.y() + 10)
-            
+
             opacity_anim = QPropertyAnimation(widget, b"windowOpacity")
             opacity_anim.setDuration(300)
             opacity_anim.setStartValue(0.0)
             opacity_anim.setEndValue(1.0)
             opacity_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-            
+
             pos_anim = QPropertyAnimation(widget, b"pos")
             pos_anim.setDuration(300)
             pos_anim.setStartValue(widget.pos())
             pos_anim.setEndValue(current_pos)
             pos_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-            
+
             opacity_anim.start()
             pos_anim.start()
         except Exception:
@@ -2470,56 +1973,33 @@ class MainWindow(QWidget):
         text,
     ):
 
-        bubble = QLabel(
-            str(text)
-        )
+        bubble = QLabel(str(text))
 
-        bubble.setObjectName(
-            "UserBubble"
-        )
+        bubble.setObjectName("UserBubble")
 
-        bubble.setWordWrap(
-            True
-        )
+        bubble.setWordWrap(True)
 
-        bubble.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        bubble.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         # Keep the user reply comfortably wide without dominating the chat area.
         chat_width = self.chat_area.width() if self.chat_area else 800
         max_width = max(260, int(chat_width * 0.72))
-        bubble.setMaximumWidth(
-            max_width
-        )
+        bubble.setMaximumWidth(max_width)
 
-        bubble.setSizePolicy(
-            QSizePolicy.Policy.Maximum,
-            QSizePolicy.Policy.Preferred
-        )
+        bubble.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
 
         # Animate entrance
         self._animate_widget_entrance(bubble)
 
         row = QHBoxLayout()
 
-        row.setContentsMargins(
-            0,
-            0,
-            0,
-            0
-        )
+        row.setContentsMargins(0, 0, 0, 0)
 
         row.addStretch()
 
-        row.addWidget(
-            bubble
-        )
+        row.addWidget(bubble)
 
-        self.message_layout.insertLayout(
-            self.message_layout.count() - 1,
-            row
-        )
+        self.message_layout.insertLayout(self.message_layout.count() - 1, row)
 
         self.scroll_to_bottom()
 
@@ -2536,23 +2016,16 @@ class MainWindow(QWidget):
 
         browser = QTextBrowser()
         browser.setObjectName("AIBubble")
-        
+
         # Let AI responses feel spacious but still readable within the conversation area.
         chat_width = self.chat_area.width() if self.chat_area else 800
         max_width = max(360, int(chat_width * 0.82))
         browser.setMaximumWidth(max_width)
         browser.setMinimumHeight(40)
-        browser.setSizePolicy(
-            QSizePolicy.Policy.Maximum,
-            QSizePolicy.Policy.Preferred
-        )
+        browser.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
         browser.setOpenExternalLinks(True)
-        browser.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        browser.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         browser.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
 
         # Style the QTextBrowser to match AIBubble
@@ -2583,10 +2056,7 @@ class MainWindow(QWidget):
         row.addWidget(browser)
         row.addStretch()
 
-        self.message_layout.insertLayout(
-            self.message_layout.count() - 1,
-            row
-        )
+        self.message_layout.insertLayout(self.message_layout.count() - 1, row)
 
         self.scroll_to_bottom()
         return browser
@@ -2607,11 +2077,11 @@ class MainWindow(QWidget):
         """Reflow all messages to fit the current chat area width."""
         if not self.chat_area or not self.message_layout:
             return
-        
+
         chat_width = self.chat_area.width()
         if chat_width <= 0:
             return
-        
+
         # Update all user message bubbles
         for i in range(self.message_layout.count()):
             item = self.message_layout.itemAt(i)
@@ -2626,7 +2096,12 @@ class MainWindow(QWidget):
                         max_width = max(360, int(chat_width * 0.82))
                         widget.setMaximumWidth(max_width)
                         # Re-adjust height with new width
-                        QTimer.singleShot(0, lambda b=widget, w=max_width: self._adjust_browser_height(b, w))
+                        QTimer.singleShot(
+                            0,
+                            lambda b=widget, w=max_width: self._adjust_browser_height(
+                                b, w
+                            ),
+                        )
 
     # ========================================================
     # ADD AI MESSAGE (PLAIN TEXT FALLBACK - delegates to rich)
@@ -2649,64 +2124,36 @@ class MainWindow(QWidget):
         # Container frame for image message
         container = QFrame()
 
-        container.setObjectName(
-            "ImageBubble"
-        )
+        container.setObjectName("ImageBubble")
 
-        container.setMaximumWidth(
-            680
-        )
+        container.setMaximumWidth(680)
 
-        container_layout = QVBoxLayout(
-            container
-        )
+        container_layout = QVBoxLayout(container)
 
-        container_layout.setContentsMargins(
-            8,
-            8,
-            8,
-            8
-        )
+        container_layout.setContentsMargins(8, 8, 8, 8)
 
-        container_layout.setSpacing(
-            8
-        )
+        container_layout.setSpacing(8)
 
         # Caption label
         if caption:
+            caption_label = QLabel(str(caption))
 
-            caption_label = QLabel(
-                str(caption)
-            )
+            caption_label.setWordWrap(True)
 
-            caption_label.setWordWrap(
-                True
-            )
+            caption_label.setStyleSheet("color: #F5F5F5; font-size: 14px;")
 
-            caption_label.setStyleSheet(
-                "color: #F5F5F5; font-size: 14px;"
-            )
-
-            container_layout.addWidget(
-                caption_label
-            )
+            container_layout.addWidget(caption_label)
 
         # Image label
         image_label = QLabel()
 
-        image_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
+        image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Load and scale image
         if os.path.exists(image_path):
-
-            pixmap = QPixmap(
-                image_path
-            )
+            pixmap = QPixmap(image_path)
 
             if not pixmap.isNull():
-
                 # Scale to fit chat area, preserve aspect ratio
                 max_width = 500
                 max_height = 400
@@ -2718,46 +2165,26 @@ class MainWindow(QWidget):
                     Qt.TransformationMode.SmoothTransformation,
                 )
 
-                image_label.setPixmap(
-                    scaled
-                )
+                image_label.setPixmap(scaled)
 
             else:
-
-                image_label.setText(
-                    "[Image could not be loaded]"
-                )
+                image_label.setText("[Image could not be loaded]")
 
         else:
+            image_label.setText("[Image file not found]")
 
-            image_label.setText(
-                "[Image file not found]"
-            )
-
-        container_layout.addWidget(
-            image_label
-        )
+        container_layout.addWidget(image_label)
 
         # Row layout
         row = QHBoxLayout()
 
-        row.setContentsMargins(
-            0,
-            0,
-            0,
-            0
-        )
+        row.setContentsMargins(0, 0, 0, 0)
 
-        row.addWidget(
-            container
-        )
+        row.addWidget(container)
 
         row.addStretch()
 
-        self.message_layout.insertLayout(
-            self.message_layout.count() - 1,
-            row
-        )
+        self.message_layout.insertLayout(self.message_layout.count() - 1, row)
 
         self.scroll_to_bottom()
 
@@ -2770,36 +2197,21 @@ class MainWindow(QWidget):
     ):
 
         if self.thinking_label is not None:
-
             return
 
-        self.thinking_label = QLabel(
-            "AI Friend is thinking... 🤔"
-        )
+        self.thinking_label = QLabel("AI Friend is thinking... 🤔")
 
-        self.thinking_label.setObjectName(
-            "Typing"
-        )
+        self.thinking_label.setObjectName("Typing")
 
         row = QHBoxLayout()
 
-        row.setContentsMargins(
-            0,
-            0,
-            0,
-            0
-        )
+        row.setContentsMargins(0, 0, 0, 0)
 
-        row.addWidget(
-            self.thinking_label
-        )
+        row.addWidget(self.thinking_label)
 
         row.addStretch()
 
-        self.message_layout.insertLayout(
-            self.message_layout.count() - 1,
-            row
-        )
+        self.message_layout.insertLayout(self.message_layout.count() - 1, row)
 
         self.scroll_to_bottom()
 
@@ -2812,15 +2224,12 @@ class MainWindow(QWidget):
     ):
 
         if self.thinking_label is None:
-
             return
 
         try:
-
             self.thinking_label.deleteLater()
 
         except RuntimeError:
-
             pass
 
         self.thinking_label = None
@@ -2834,12 +2243,9 @@ class MainWindow(QWidget):
         image_path,
     ):
 
-        pixmap = QPixmap(
-            image_path
-        )
+        pixmap = QPixmap(image_path)
 
         if pixmap.isNull():
-
             return
 
         scaled = pixmap.scaled(
@@ -2865,23 +2271,15 @@ class MainWindow(QWidget):
             "  padding: 4px;"
             "}"
         )
-        label.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
 
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(label)
-        layout.setAlignment(
-            label,
-            Qt.AlignmentFlag.AlignLeft
-        )
+        layout.setAlignment(label, Qt.AlignmentFlag.AlignLeft)
 
-        self.message_layout.insertWidget(
-            self.message_layout.count() - 1,
-            container
-        )
+        self.message_layout.insertWidget(self.message_layout.count() - 1, container)
         self.scroll_to_bottom()
 
     # ========================================================
@@ -2897,14 +2295,10 @@ class MainWindow(QWidget):
         files = []
         if event.mimeData().hasUrls():
             files = [
-                u.toLocalFile()
-                for u in event.mimeData().urls()
-                if u.isLocalFile()
+                u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()
             ]
         elif event.mimeData().hasImage():
-            files = [
-                "clipboard_image.png"
-            ]
+            files = ["clipboard_image.png"]
 
         if files:
             self.attached_files.extend(files)
@@ -2963,37 +2357,44 @@ class MainWindow(QWidget):
             if not p.exists():
                 continue
             suffix = p.suffix.lower()
-            if suffix in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}:
+            if suffix in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}:
                 try:
                     import base64
-                    with open(p, 'rb') as f:
-                        data = base64.b64encode(f.read()).decode('utf-8')
-                    results.append({
-                        'type': 'image',
-                        'path': str(p),
-                        'name': p.name,
-                        'data': data,
-                        'mime': f'image/{suffix[1:]}',
-                    })
+
+                    with open(p, "rb") as f:
+                        data = base64.b64encode(f.read()).decode("utf-8")
+                    results.append(
+                        {
+                            "type": "image",
+                            "path": str(p),
+                            "name": p.name,
+                            "data": data,
+                            "mime": f"image/{suffix[1:]}",
+                        }
+                    )
                 except Exception as e:
                     print(f"[ATTACH] Image read error: {e}")
             else:
                 try:
-                    with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(p, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
-                    results.append({
-                        'type': 'text',
-                        'path': str(p),
-                        'name': p.name,
-                        'content': content,
-                    })
-                except Exception as e:
-                    results.append({
-                        'type': 'text',
-                        'path': str(p),
-                        'name': p.name,
-                        'content': f'[Binary or unreadable file: {p.name}]',
-                    })
+                    results.append(
+                        {
+                            "type": "text",
+                            "path": str(p),
+                            "name": p.name,
+                            "content": content,
+                        }
+                    )
+                except Exception:
+                    results.append(
+                        {
+                            "type": "text",
+                            "path": str(p),
+                            "name": p.name,
+                            "content": f"[Binary or unreadable file: {p.name}]",
+                        }
+                    )
         return results
 
     # ========================================================
@@ -3008,9 +2409,7 @@ class MainWindow(QWidget):
         if self.is_processing:
             return
 
-        message = sanitize_user_text(
-            self.user_input.text()
-        )
+        message = sanitize_user_text(self.user_input.text())
 
         if not message:
             return
@@ -3031,8 +2430,8 @@ class MainWindow(QWidget):
 
         # Display any attached images in chat
         for att in self._process_attachments_for_ai():
-            if att['type'] == 'image':
-                self.add_image_message(att['path'])
+            if att["type"] == "image":
+                self.add_image_message(att["path"])
 
         self._clear_attachments()
         self.user_input.clear()
@@ -3050,9 +2449,7 @@ class MainWindow(QWidget):
         self.character_call("react_to_message", message)
         self.character_call("set_thinking", True)
         self.character_call(
-            "react",
-            "thinking",
-            {"message": "I'm thinking through your request…"}
+            "react", "thinking", {"message": "I'm thinking through your request…"}
         )
 
         self.show_thinking()
@@ -3127,18 +2524,15 @@ class MainWindow(QWidget):
 
         self.character_call("set_thinking", False)
         self.character_call(
-            "react",
-            "speaking",
-            {"message": "I've got an answer for you."}
+            "react", "speaking", {"message": "I've got an answer for you."}
         )
 
         if self.companion is not None:
             self.companion.on_ai_response(str(full_text))
 
         # Voice
-        should_speak = (
-            self.voice_enabled
-            and bool(get_setting("voice.speak_after_response", True))
+        should_speak = self.voice_enabled and bool(
+            get_setting("voice.speak_after_response", True)
         )
         if should_speak:
             self.start_voice(self._current_full_text)
@@ -3158,11 +2552,7 @@ class MainWindow(QWidget):
 
         self.character_call("set_thinking", False)
         self.character_call("set_expression", "sad")
-        self.character_call(
-            "react",
-            "error",
-            {"message": "Something went wrong."}
-        )
+        self.character_call("react", "error", {"message": "Something went wrong."})
 
         if self.companion is not None:
             self.companion.on_error(error_msg)
@@ -3233,13 +2623,16 @@ class MainWindow(QWidget):
             # Find the index of the browser's row
             for i in range(self.message_layout.count()):
                 item = self.message_layout.itemAt(i)
-                if item and item.layout() and self._layout_contains(item.layout(), browser):
+                if (
+                    item
+                    and item.layout()
+                    and self._layout_contains(item.layout(), browser)
+                ):
                     self.message_layout.insertLayout(i + 1, actions_row)
                     break
         else:
             self.message_layout.insertLayout(
-                self.message_layout.count() - 1,
-                actions_row
+                self.message_layout.count() - 1, actions_row
             )
 
     def _layout_contains(self, layout, widget):
@@ -3261,11 +2654,7 @@ class MainWindow(QWidget):
         self.update_status("thinking", "Thinking")
 
         self.character_call("set_thinking", True)
-        self.character_call(
-            "react",
-            "thinking",
-            {"message": "Let me try again..."}
-        )
+        self.character_call("react", "thinking", {"message": "Let me try again..."})
 
         self.show_thinking()
 
@@ -3293,9 +2682,8 @@ class MainWindow(QWidget):
         self.add_ai_message_rich(str(reply))
         self._append_assistant_message_to_chat(str(reply))
 
-        should_speak = (
-            self.voice_enabled
-            and bool(get_setting("voice.speak_after_response", True))
+        should_speak = self.voice_enabled and bool(
+            get_setting("voice.speak_after_response", True)
         )
         if should_speak:
             self.start_voice(str(reply))
@@ -3316,9 +2704,7 @@ class MainWindow(QWidget):
         self.character_call("set_expression", "sad")
 
         self.add_ai_message_rich(
-            "Sorry brooo 😭\n\n"
-            "Could not regenerate the response.\n\n"
-            "Please try again."
+            "Sorry brooo 😭\n\nCould not regenerate the response.\n\nPlease try again."
         )
 
         self.set_processing_state(False)
@@ -3354,47 +2740,27 @@ class MainWindow(QWidget):
     ):
 
         try:
-
             # New voice.py versions
             # may support callbacks.
 
-            speak(
-                reply,
-                on_start=self.start_talking,
-                on_finish=self.finish_talking
-            )
+            speak(reply, on_start=self.start_talking, on_finish=self.finish_talking)
 
         except TypeError:
-
             # Compatibility fallback for
             # older voice.py versions.
 
             try:
+                speak(reply)
 
-                speak(
-                    reply
-                )
-
-                self.character_call(
-                    "set_expression",
-                    "happy"
-                )
+                self.character_call("set_expression", "happy")
 
             except Exception as error:
-
-                print(
-                    "VOICE ERROR:",
-                    error
-                )
+                print("VOICE ERROR:", error)
 
                 self.finish_talking()
 
         except Exception as error:
-
-            print(
-                "VOICE ERROR:",
-                error
-            )
+            print("VOICE ERROR:", error)
 
             self.finish_talking()
 
@@ -3408,7 +2774,6 @@ class MainWindow(QWidget):
     ):
 
         if self.is_closing:
-
             return
 
         self.remove_thinking()
@@ -3418,23 +2783,11 @@ class MainWindow(QWidget):
             "Error",
         )
 
-        self.character_call(
-            "set_thinking",
-            False
-        )
+        self.character_call("set_thinking", False)
 
-        self.character_call(
-            "set_expression",
-            "sad"
-        )
+        self.character_call("set_expression", "sad")
 
-        self.character_call(
-            "react",
-            "error",
-            {
-                "message": "Something went wrong."
-            }
-        )
+        self.character_call("react", "error", {"message": "Something went wrong."})
 
         self.add_ai_message(
             "Sorry brooo 😭\n\n"
@@ -3442,21 +2795,13 @@ class MainWindow(QWidget):
             "Please try again."
         )
 
-        print(
-            "\n========== AI ERROR =========="
-        )
+        print("\n========== AI ERROR ==========")
 
-        print(
-            error
-        )
+        print(error)
 
-        print(
-            "==============================\n"
-        )
+        print("==============================\n")
 
-        self.set_processing_state(
-            False
-        )
+        self.set_processing_state(False)
 
     # ========================================================
     # WORKER CLEANUP
@@ -3470,7 +2815,6 @@ class MainWindow(QWidget):
         worker = self.worker
 
         if worker is None:
-
             return
 
         self.worker = None
@@ -3486,30 +2830,18 @@ class MainWindow(QWidget):
         processing,
     ):
 
-        self.is_processing = bool(
-            processing
-        )
+        self.is_processing = bool(processing)
 
-        self.user_input.setEnabled(
-            not self.is_processing
-        )
+        self.user_input.setEnabled(not self.is_processing)
 
-        self.send_button.setEnabled(
-            not self.is_processing
-        )
+        self.send_button.setEnabled(not self.is_processing)
 
-        self.new_chat_button.setEnabled(
-            not self.is_processing
-        )
+        self.new_chat_button.setEnabled(not self.is_processing)
 
         if not self.is_processing:
-
-            self.mic_button.setEnabled(
-                True
-            )
+            self.mic_button.setEnabled(True)
 
         if not self.is_processing:
-
             self.user_input.setFocus()
 
     # ========================================================
@@ -3521,7 +2853,6 @@ class MainWindow(QWidget):
     ):
 
         if not self.voice_enabled:
-
             return
 
         QTimer.singleShot(
@@ -3534,7 +2865,6 @@ class MainWindow(QWidget):
     ):
 
         if self.is_closing:
-
             return
 
         self.update_status(
@@ -3542,9 +2872,7 @@ class MainWindow(QWidget):
             "Speaking",
         )
 
-        self.character_talking_signal.emit(
-            True
-        )
+        self.character_talking_signal.emit(True)
 
     # ========================================================
     # FINISH TALKING
@@ -3564,12 +2892,9 @@ class MainWindow(QWidget):
     ):
 
         if self.is_closing:
-
             return
 
-        self.character_talking_signal.emit(
-            False
-        )
+        self.character_talking_signal.emit(False)
 
         self.update_status(
             "ready",
@@ -3584,10 +2909,7 @@ class MainWindow(QWidget):
         self,
     ):
 
-        self.character_call(
-            "set_expression",
-            "idle"
-        )
+        self.character_call("set_expression", "idle")
 
     # ========================================================
     # NEW CHAT
@@ -3598,20 +2920,15 @@ class MainWindow(QWidget):
     ):
 
         if self.is_processing:
-
             return
 
         try:
-
             stop_speaking()
 
         except Exception:
-
             pass
 
-        self.character_talking_signal.emit(
-            False
-        )
+        self.character_talking_signal.emit(False)
 
         self.remove_thinking()
 
@@ -3652,20 +2969,13 @@ class MainWindow(QWidget):
             "Ready",
         )
 
-        self.character_call(
-            "set_expression",
-            "happy"
-        )
+        self.character_call("set_expression", "happy")
 
         self.add_ai_message(
-            "New conversation started 😎🔥\n\n"
-            "What do you want to talk about?"
+            "New conversation started 😎🔥\n\nWhat do you want to talk about?"
         )
 
-        QTimer.singleShot(
-            1500,
-            self.return_to_idle
-        )
+        QTimer.singleShot(1500, self.return_to_idle)
 
     # ========================================================
     # CHAT MANAGEMENT
@@ -3690,7 +3000,7 @@ class MainWindow(QWidget):
         except Exception as error:
             print("[CHAT] Save error:", error)
 
-    def _get_active_chat(self) -> Optional[dict]:
+    def _get_active_chat(self) -> dict | None:
         """Return the currently active chat dict, or None."""
         if not self.active_chat_id:
             return None
@@ -3705,7 +3015,7 @@ class MainWindow(QWidget):
             return
 
         # Block rapid calls to prevent libshiboken crashes
-        if hasattr(self, '_new_chat_lock') and self._new_chat_lock:
+        if hasattr(self, "_new_chat_lock") and self._new_chat_lock:
             return
         self._new_chat_lock = True
 
@@ -3741,7 +3051,7 @@ class MainWindow(QWidget):
             self.new_chat()
         finally:
             # Release lock after a longer delay to ensure UI is fully settled
-            QTimer.singleShot(500, lambda: setattr(self, '_new_chat_lock', False))
+            QTimer.singleShot(500, lambda: setattr(self, "_new_chat_lock", False))
 
     def switch_chat(self, chat_id: str):
         """Switch to the chat with the given ID."""
@@ -3897,11 +3207,13 @@ class MainWindow(QWidget):
         if chat is None:
             return
         now = datetime.now().isoformat()
-        chat["messages"].append({
-            "role": "user",
-            "content": text,
-            "timestamp": now,
-        })
+        chat["messages"].append(
+            {
+                "role": "user",
+                "content": text,
+                "timestamp": now,
+            }
+        )
         chat["updated_at"] = now
         self._auto_title_chat(chat)
         self.save_chats()
@@ -3914,11 +3226,13 @@ class MainWindow(QWidget):
         if chat is None:
             return
         now = datetime.now().isoformat()
-        chat["messages"].append({
-            "role": "assistant",
-            "content": text,
-            "timestamp": now,
-        })
+        chat["messages"].append(
+            {
+                "role": "assistant",
+                "content": text,
+                "timestamp": now,
+            }
+        )
         chat["updated_at"] = now
         self._auto_title_chat(chat)
         self.save_chats()
@@ -3938,23 +3252,15 @@ class MainWindow(QWidget):
         self,
     ):
 
-        QTimer.singleShot(
-            50,
-            self._scroll_to_bottom_now
-        )
+        QTimer.singleShot(50, self._scroll_to_bottom_now)
 
     def _scroll_to_bottom_now(
         self,
     ):
 
-        scrollbar = (
-            self.chat_area
-            .verticalScrollBar()
-        )
+        scrollbar = self.chat_area.verticalScrollBar()
 
-        scrollbar.setValue(
-            scrollbar.maximum()
-        )
+        scrollbar.setValue(scrollbar.maximum())
 
     # ========================================================
     # CHARACTER POSITION
@@ -3965,7 +3271,6 @@ class MainWindow(QWidget):
     ):
 
         try:
-
             user_size = float(
                 get_setting(
                     "character.size",
@@ -3974,13 +3279,11 @@ class MainWindow(QWidget):
             )
 
         except (TypeError, ValueError):
-
             user_size = 1.0
 
         user_size = max(0.3, min(3.0, user_size))
 
         if self.width() <= 900:
-
             responsive = max(
                 0.55,
                 min(
@@ -3998,7 +3301,6 @@ class MainWindow(QWidget):
     ):
 
         if self.isMinimized():
-
             self.showNormal()
 
         self.raise_()
@@ -4014,18 +3316,13 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         if self.compact_character_mode:
-
             return
 
         if self.character.parent() is self:
-
-            self.character.setParent(
-                None
-            )
+            self.character.setParent(None)
 
         self.character.setWindowFlag(
             Qt.WindowType.Tool,
@@ -4047,9 +3344,7 @@ class MainWindow(QWidget):
             True,
         )
 
-        self.character.set_scale_factor(
-            0.62
-        )
+        self.character.set_scale_factor(0.62)
 
         self.character.show()
 
@@ -4064,18 +3359,14 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         if not self.compact_character_mode:
-
             return
 
         self.character.hide()
 
-        self.character.setParent(
-            self
-        )
+        self.character.setParent(self)
 
         self.character.setWindowFlag(
             Qt.WindowType.Tool,
@@ -4105,18 +3396,13 @@ class MainWindow(QWidget):
     ):
 
         if self.character is None:
-
             return
 
         if not self.character.isVisible():
-
             return
 
         if self.character.parent() is self.sidebar:
-
-            self.character.set_scale_factor(
-                self.get_character_scale_factor()
-            )
+            self.character.set_scale_factor(self.get_character_scale_factor())
 
             sidebar_rect = self.sidebar.contentsRect()
             margin = 18
@@ -4129,31 +3415,25 @@ class MainWindow(QWidget):
                 sidebar_rect.bottom() - self.character.height() - margin,
             )
 
-            self.character.move(
-                x,
-                y
-            )
+            self.character.move(x, y)
 
             self.character.raise_()
 
         elif self.character.parent() is self:
-
-            if not hasattr(self.character, '_user_positioned') or not self.character._user_positioned:
-
+            if (
+                not hasattr(self.character, "_user_positioned")
+                or not self.character._user_positioned
+            ):
                 margin = 12
                 x = margin
                 y = max(
                     margin,
                     self.height() - self.character.height() - margin,
                 )
-                self.character.move(
-                    x,
-                    y
-                )
+                self.character.move(x, y)
                 self.character.raise_()
 
             else:
-
                 margin = 12
                 x = max(
                     margin,
@@ -4171,11 +3451,7 @@ class MainWindow(QWidget):
                 )
 
                 if self.character.x() != x or self.character.y() != y:
-
-                    self.character.move(
-                        x,
-                        y
-                    )
+                    self.character.move(x, y)
 
                     self.save_companion_position()
 
@@ -4190,18 +3466,13 @@ class MainWindow(QWidget):
         event,
     ):
 
-        super().changeEvent(
-            event
-        )
+        super().changeEvent(event)
 
         if event.type() == QEvent.Type.WindowStateChange:
-
             if self.isMinimized():
-
                 self.enter_compact_character_mode()
 
             elif self.compact_character_mode:
-
                 self.restore_character_to_window()
 
         self.position_character()
@@ -4211,9 +3482,7 @@ class MainWindow(QWidget):
         event,
     ):
 
-        super().resizeEvent(
-            event
-        )
+        super().resizeEvent(event)
 
         # Resize neural canvas
         if self.neural_canvas:
@@ -4249,26 +3518,18 @@ class MainWindow(QWidget):
 
         # Stop microphone if recording
         if is_recording():
-
             try:
                 listen_stop()
             except Exception:
                 pass
 
         try:
-
             stop_speaking()
 
         except Exception as error:
+            print("VOICE STOP ERROR:", error)
 
-            print(
-                "VOICE STOP ERROR:",
-                error
-            )
-
-        self.character_talking_signal.emit(
-            False
-        )
+        self.character_talking_signal.emit(False)
 
         self.remove_thinking()
 
@@ -4277,43 +3538,27 @@ class MainWindow(QWidget):
         # ----------------------------------------------------
 
         if self.worker is not None:
-
             try:
-
                 if self.worker.isRunning():
-
                     self.worker.requestInterruption()
 
                     self.worker.quit()
 
-                    if not self.worker.wait(
-                        2500
-                    ):
-
-                        print(
-                            "AI worker did not stop "
-                            "within timeout."
-                        )
+                    if not self.worker.wait(2500):
+                        print("AI worker did not stop within timeout.")
 
             except Exception as error:
-
-                print(
-                    "WORKER CLOSE ERROR:",
-                    error
-                )
+                print("WORKER CLOSE ERROR:", error)
 
         # ----------------------------------------------------
         # CLOSE SETTINGS
         # ----------------------------------------------------
 
         if self.settings_window is not None:
-
             try:
-
                 self.settings_window.close()
 
             except Exception:
-
                 pass
 
         # ----------------------------------------------------
@@ -4348,7 +3593,7 @@ class MainWindow(QWidget):
         # STOP SCREEN AWARENESS
         # ----------------------------------------------------
 
-        if hasattr(self, 'screen_awareness') and self.screen_awareness is not None:
+        if hasattr(self, "screen_awareness") and self.screen_awareness is not None:
             try:
                 self.screen_awareness.stop()
             except Exception:
@@ -4403,8 +3648,7 @@ def show_splash_screen():
     """Show a cinematic splash screen on startup."""
     splash = QWidget()
     splash.setWindowFlags(
-        Qt.WindowType.FramelessWindowHint |
-        Qt.WindowType.WindowStaysOnTopHint
+        Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
     )
     splash.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     splash.setFixedSize(500, 300)
@@ -4478,33 +3722,18 @@ def show_splash_screen():
 
 def main():
 
-    app = QApplication(
-        sys.argv
-    )
+    app = QApplication(sys.argv)
 
-    app.setStyle(
-        "Fusion"
-    )
+    app.setStyle("Fusion")
 
-    app.setApplicationName(
-        "Avora"
-    )
+    app.setApplicationName("Avora")
 
-    app.setOrganizationName(
-        "Avora"
-    )
+    app.setOrganizationName("Avora")
 
-    app.setWindowIcon(
-        QIcon(
-            str(ICON_PATH)
-        )
-    )
+    app.setWindowIcon(QIcon(str(ICON_PATH)))
 
     try:
-        APP_DATA_DIR.mkdir(
-            parents=True,
-            exist_ok=True
-        )
+        APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
 
@@ -4598,9 +3827,10 @@ def main():
     try:
         from mission_tracker import get_mission_tracker
         from mission_ui import WelcomeBackWidget
+
         mission_tracker = get_mission_tracker()
         print("[MISSIONS] Mission system initialized")
-        
+
         # Show welcome back widget if there are active missions
         if mission_tracker.get_active_missions():
             welcome_back = WelcomeBackWidget(window)
@@ -4617,6 +3847,7 @@ def main():
 
     try:
         from settings import is_screen_awareness_enabled
+
         if is_screen_awareness_enabled():
             window.start_screen_awareness()
             print("[SCREEN AWARENESS] Auto-started")
@@ -4651,9 +3882,7 @@ def main():
 
     app.aboutToQuit.connect(cleanup_on_exit)
 
-    sys.exit(
-        app.exec()
-    )
+    sys.exit(app.exec())
 
 
 # ============================================================
@@ -4662,5 +3891,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()
