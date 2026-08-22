@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QSpacerItem, QSizePolicy, QGraphicsOpacityEffect
 )
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, qApp, QPropertyAnimation
-from PySide6.QtGui import QFont, QPainter, QColor, QIcon
+from PySide6.QtGui import QFont, QPainter, QColor, QIcon, QTextOption
 from PySide6.QtCore import QEasingCurve
 
 from agent_bridge import AgentBridge
@@ -355,6 +355,10 @@ class AvoraDesktopWindow(QMainWindow):
         # Chat area
         self.chat_area = QTextEdit()
         self.chat_area.setReadOnly(True)
+        self.chat_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.chat_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.chat_area.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.chat_area.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         self.chat_area.setStyleSheet("""
             QTextEdit {
                 background: transparent;
@@ -363,7 +367,7 @@ class AvoraDesktopWindow(QMainWindow):
                 color: #e5e5e5;
             }
         """)
-        main_layout.addWidget(self.chat_area)
+        main_layout.addWidget(self.chat_area, 1)
         
         # Tool activity widget
         self.activity_widget = ToolActivityWidget()

@@ -7,7 +7,7 @@ import math
 import random
 import time
 
-from PySide6.QtWidgets import QWidget, QLabel
+from PySide6.QtWidgets import QWidget, QLabel, QMenu, QGraphicsDropShadowEffect
 from PySide6.QtGui import (
     QPainter,
     QBrush,
@@ -24,6 +24,9 @@ from PySide6.QtCore import (
     QPointF,
     Signal,
     QRect,
+    QPoint,
+    QPropertyAnimation,
+    QEasingCurve,
 )
 
 from settings import get_setting
@@ -37,23 +40,6 @@ class Character(QWidget):
 
     restore_requested = Signal()
     clicked = Signal()
-
-    # Close gesture configuration
-    close_threshold = 100
-    X_BASE_RADIUS = 30
-    X_GROW_FACTOR = 3.0
-
-    # Gesture state flags
-    close_gesture_in_progress = False
-    is_dragging_downward = False
-    is_dragging_sideways = False
-    drag_start_x = 0
-    drag_start_y = 0
-
-    # X button animation state
-    close_x_scale = 1.0
-    close_x_opacity = 0.0
-    close_x_visible = False
 
     # ========================================================
     # INITIALIZATION
@@ -71,6 +57,7 @@ class Character(QWidget):
         self.setup_state()
         self.setup_timers()
         self.setup_notification_ui()
+        self.setup_companion_customization()
 
     # ========================================================
     # SETTINGS
@@ -197,6 +184,12 @@ class Character(QWidget):
 
         self.setWindowFlag(
             Qt.WindowType.FramelessWindowHint
+        )
+
+        self.setCursor(
+            QCursor(
+                Qt.CursorShape.OpenHandCursor
+            )
         )
 
         self.update_window_settings()
@@ -411,19 +404,7 @@ class Character(QWidget):
         self._press_pos = None
         self._press_time = 0.0
         self.click_peek = 0
-
-        # Close gesture state
-        self.close_gesture_in_progress = False
-        self.is_dragging_downward = False
-        self.is_dragging_sideways = False
-        self.drag_start_x = 0
-        self.drag_start_y = 0
-        self.close_x_scale = 1.0
-        self.close_x_opacity = 0.0
-        self.close_x_visible = False
-        self._original_pos_x = 0
-        self._original_pos_y = 0
-        self._anim_timer = None
+        self._user_positioned = False
 
         # ---------------- BLINK ----------------
 
@@ -477,9 +458,160 @@ class Character(QWidget):
         self.notification_label.setFont(QFont("Segoe UI", 9))
         self.notification_label.setWordWrap(True)
         self.notification_label.setVisible(False)
-        self.notification_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    def show_notification(self, message: str, duration: int = 2200):
+    def setup_companion_customization(self):
+        self._glow_effect = None
+        self._glow_animation = None
+        self._float_animation = None
+        self._current_ai_state = "idle"
+        self._context_menu = None
+        self._companion_animation = "gentle_float"
+        self._companion_anim_time = 0.0
+        self._companion_visual_scale = 1.0
+        self._companion_y_offset = 0.0
+        self._last_glow_color = "#00FF88"
+        self._last_glow_intensity = 0.5
+
+        self.apply_companion_settings()
+
+    def apply_companion_settings(self):
+        try:
+            from settings import get_setting
+            size = float(get_setting("companion_widget.size", 1.0))
+            glow_intensity = float(get_setting("companion_widget.glow_intensity", 0.5))
+            glow_color = get_setting("companion_widget.glow_color", "#00FF88")
+            animation = get_setting("companion_widget.animation", "gentle_float")
+            enabled = bool(get_setting("companion_widget.enabled", True))
+        except Exception:
+            size = 1.0
+            glow_intensity = 0.5
+            glow_color = "#00FF88"
+            animation = "gentle_float"
+            enabled = True
+
+        self._companion_animation = animation
+        self._last_glow_color = glow_color
+        self._last_glow_intensity = glow_intensity
+        self._ai_state_animation_override = None
+
+        if not enabled:
+            self.hide()
+            return
+
+        self.show()
+        self.set_scale_factor(size)
+        self.update_glow(glow_intensity, glow_color)
+        self.update_animation(animation)
+
+    def update_glow(self, intensity, color):
+        if self._glow_effect is None:
+            self._glow_effect = QGraphicsDropShadowEffect(self)
+            self._glow_effect.setBlurRadius(40)
+            self._glow_effect.setOffset(0, 0)
+            self.setGraphicsEffect(self._glow_effect)
+
+        alpha = int(255 * max(0.0, min(1.0, intensity)))
+        glow_color = QColor(color)
+        glow_color.setAlpha(alpha)
+        self._glow_effect.setColor(glow_color)
+        self._glow_effect.setBlurRadius(int(20 * max(0.0, intensity) + intensity * 40))
+        self.update()
+
+    def update_animation(self, animation):
+        if self._float_animation is not None:
+            self._float_animation.stop()
+            self._float_animation = None
+
+        if animation == "gentle_float":
+            pass
+        elif animation == "pulse":
+            pass
+        elif animation == "bounce":
+            pass
+        elif animation == "breathing":
+            pass
+        elif animation == "glow_pulse":
+            pass
+
+    def set_ai_state(self, state):
+        self._current_ai_state = state
+        if state == "thinking":
+            self.update_glow(0.8, "#00FF88")
+            self._ai_state_animation_override = "glow_pulse"
+        elif state == "listening":
+            self.update_glow(0.7, "#00B4D8")
+            self._ai_state_animation_override = "pulse"
+        elif state == "speaking":
+            self.update_glow(0.7, "#00FF88")
+            self._ai_state_animation_override = "bounce"
+        else:
+            self._ai_state_animation_override = None
+            try:
+                from settings import get_setting
+                animation = get_setting("companion_widget.animation", "gentle_float")
+                self.update_animation(animation)
+                glow_intensity = float(get_setting("companion_widget.glow_intensity", 0.5))
+                glow_color = get_setting("companion_widget.glow_color", "#00FF88")
+                self.update_glow(glow_intensity, glow_color)
+            except Exception:
+                pass
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        hide_action = menu.addAction("Hide Companion")
+        reset_pos_action = menu.addAction("Reset Position")
+        settings_action = menu.addAction("Companion Settings")
+        action = menu.exec_(event.globalPos())
+        if action == hide_action:
+            self.hide()
+            try:
+                from settings import set_setting
+                set_setting("companion_widget.enabled", False)
+            except Exception:
+                pass
+        elif action == reset_pos_action:
+            self._user_positioned = False
+            try:
+                from settings import set_setting
+                set_setting("companion_widget.position_x", -1)
+                set_setting("companion_widget.position_y", -1)
+            except Exception:
+                pass
+            if self.parent() is not None:
+                parent_window = self.parent().window()
+                if hasattr(parent_window, 'restore_companion_position'):
+                    parent_window.restore_companion_position()
+        elif action == settings_action:
+            if self.parent() is not None:
+                parent_window = self.parent().window()
+                if hasattr(parent_window, 'open_settings'):
+                    parent_window.open_settings()
+
+    def mouseDoubleClickEvent(self, event):
+        if self.parent() is not None:
+            parent_window = self.parent().window()
+            if hasattr(parent_window, 'raise_') and hasattr(parent_window, 'activateWindow'):
+                parent_window.raise_()
+                parent_window.activateWindow()
+                if hasattr(parent_window, 'user_input'):
+                    parent_window.user_input.setFocus()
+        event.accept()
+
+    def update_animation(self, animation):
+        if self._float_animation is not None:
+            self._float_animation.stop()
+            self._float_animation = None
+
+        if animation == "gentle_float":
+            pass
+        elif animation == "pulse":
+            pass
+        elif animation == "bounce":
+            pass
+        elif animation == "breathing":
+            pass
+        elif animation == "glow_pulse":
+            pass
         if not message:
             return
         if self.notification_label is None:
@@ -1006,6 +1138,8 @@ class Character(QWidget):
         self.update_emotion_timeout()
 
         self.update_inactivity()
+
+        self.update_companion_animation()
 
         self.update()
 
@@ -1584,6 +1718,68 @@ class Character(QWidget):
                     "sleepy"
                 )
 
+    def update_companion_animation(self):
+
+        self._companion_anim_time += 0.016
+
+        animation = getattr(self, '_ai_state_animation_override', None) or getattr(self, '_companion_animation', 'gentle_float')
+
+        if animation == 'gentle_float':
+
+            self._companion_visual_scale = 1.0
+
+            self._companion_y_offset = 0.0
+
+        elif animation == 'pulse':
+
+            self._companion_visual_scale = 1.0 + math.sin(
+                self._companion_anim_time * 3.0
+            ) * 0.05
+
+            self._companion_y_offset = 0.0
+
+        elif animation == 'bounce':
+
+            self._companion_visual_scale = 1.0
+
+            self._companion_y_offset = abs(
+                math.sin(self._companion_anim_time * 2.5)
+            ) * 8.0
+
+        elif animation == 'breathing':
+
+            self._companion_visual_scale = 1.0 + math.sin(
+                self._companion_anim_time * 1.5
+            ) * 0.03
+
+            self._companion_y_offset = 0.0
+
+        elif animation == 'glow_pulse':
+
+            self._companion_visual_scale = 1.0
+
+            self._companion_y_offset = 0.0
+
+            if self._glow_effect is not None:
+
+                base_intensity = getattr(self, '_last_glow_intensity', 0.5)
+
+                pulse = 0.5 + 0.5 * math.sin(
+                    self._companion_anim_time * 2.5
+                )
+
+                intensity = base_intensity * (0.5 + pulse * 0.5)
+
+                self._glow_effect.setBlurRadius(
+                    int(20 + intensity * 40)
+                )
+
+        else:
+
+            self._companion_visual_scale = 1.0
+
+            self._companion_y_offset = 0.0
+
     # ========================================================
     # BLINKING
     # ========================================================
@@ -1710,83 +1906,36 @@ class Character(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             self._press_pos = event.pos()
             self._press_time = time.time()
-            self.drag_offset = QPointF(event.position().toPoint())
+            self._drag_start_global = event.globalPosition().toPoint()
+            self._drag_widget_start = self.pos()
             self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
-            # Record drag start position (relative to widget for direction detection)
-            self.drag_start_x = event.pos().x()
-            self.drag_start_y = event.pos().y()
-            # Remember original window position for cancel/return
-            self._original_pos_x = self.x()
-            self._original_pos_y = self.y()
-            # Reset gesture state
-            self.close_gesture_in_progress = False
-            self.is_dragging_downward = False
-            self.is_dragging_sideways = False
-            # Stop any running animation from a previous gesture
-            if getattr(self, '_anim_timer', None):
-                if self._anim_timer.isActive():
-                    self._anim_timer.stop()
-                self._anim_timer.deleteLater()
-                self._anim_timer = None
-            # X appears only after actual dragging starts (in mouseMoveEvent)
+            event.accept()
 
     def mouseMoveEvent(self, event):
         if self._press_pos is not None and not self.dragging:
             dist = (event.pos() - self._press_pos).manhattanLength()
             if dist > 6:
                 self.dragging = True
-                # Normal free-form window drag (works in all directions)
-                global_pos = event.globalPosition().toPoint()
-                self.move(global_pos - self.drag_offset.toPoint())
-                # Show the close indicator as soon as dragging starts
-                self.close_x_visible = True
-                self.close_x_scale = 1.0
-                self.close_x_opacity = 0.6
-                self.update()
-        elif self.dragging:
-            global_pos = event.globalPosition().toPoint()
-            new_pos = global_pos - self.drag_offset.toPoint()
+        elif self.dragging and hasattr(self, '_drag_start_global') and self._drag_start_global is not None:
+            delta = event.globalPosition().toPoint() - self._drag_start_global
+            new_pos = self._drag_widget_start + delta
 
-            # Direction detection: compare vertical vs horizontal movement
-            delta_x = event.pos().x() - self.drag_start_x
-            delta_y = event.pos().y() - self.drag_start_y
-            vertical = abs(delta_y)
-            horizontal = abs(delta_x)
-
-            # Determine drag direction
-            if not self.is_dragging_downward and not self.is_dragging_sideways:
-                if vertical > 10 or horizontal > 10:
-                    if delta_y > 0 and delta_y >= horizontal:
-                        # Predominantly downward
-                        self.is_dragging_downward = True
-                        self.close_gesture_in_progress = True
-                    else:
-                        # Upward or sideways drag
-                        self.is_dragging_sideways = True
-                        self.close_gesture_in_progress = False
-            elif self.is_dragging_downward:
-                if delta_y > 0:
-                    drag_distance = min(delta_y, self.close_threshold)
-                    # Scale and opacity grow with downward distance
-                    self.close_x_scale = 1.0 + (drag_distance / self.close_threshold) * (self.X_GROW_FACTOR - 1.0)
-                    self.close_x_opacity = min(1.0, 0.4 + (drag_distance / self.close_threshold) * 0.6)
-                else:
-                    # Dragged back up - keep X visible, reduce emphasis
-                    self.close_x_scale = 1.0
-                    self.close_x_opacity = 0.5
-            elif self.is_dragging_sideways:
-                # Sideways/upward drag: keep X visible but not growing
-                self.close_x_scale = 1.0
-                self.close_x_opacity = 0.5
-                # If user switches to downward later, promote to close mode
-                if delta_y > 0 and delta_y >= horizontal:
-                    self.is_dragging_downward = True
-                    self.is_dragging_sideways = False
-                    self.close_gesture_in_progress = True
-
-            # Keep normal free-form window movement in all directions
-            self.move(new_pos)
+            parent = self.parent()
+            if parent is not None:
+                parent_rect = parent.rect()
+                x = max(0, min(new_pos.x(), parent_rect.width() - self.width()))
+                y = max(0, min(new_pos.y(), parent_rect.height() - self.height()))
+                self.move(x, y)
+            else:
+                screen = QApplication.primaryScreen()
+                if screen:
+                    geo = screen.availableGeometry()
+                    x = max(geo.left(), min(new_pos.x(), geo.right() - self.width()))
+                    y = max(geo.top(), min(new_pos.y(), geo.bottom() - self.height()))
+                    self.move(x, y)
             self.update()
+            return
+
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -1799,74 +1948,13 @@ class Character(QWidget):
         self.dragging = False
         self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
         self._press_pos = None
-
-        # Handle drag-down-to-close gesture completion
-        if self.is_dragging_downward and self.close_gesture_in_progress:
-            delta_y = event.pos().y() - self.drag_start_y
-            if delta_y >= self.close_threshold:
-                self._close_avora()
-            else:
-                self._return_to_position()
-        elif self.is_dragging_sideways:
-            self._hide_close_indicator()
-
-        # Reset gesture state
-        self.close_gesture_in_progress = False
-        self.is_dragging_downward = False
-        self.is_dragging_sideways = False
-        if not getattr(self, "_anim_timer", None) or not self._anim_timer.isActive():
-            self.close_x_visible = False
-            self.close_x_scale = 1.0
-            self.close_x_opacity = 0.0
+        self._drag_start_global = None
+        self._drag_widget_start = None
+        self._user_positioned = True
         self.update()
         super().mouseReleaseEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.restore_requested.emit()
-
-    def _close_avora(self):
-        """Animate AVORA toward the close target and close."""
-        self._animate_to_position(self.x(), self.y() + 200, 200, self.close)
-
-    def _return_to_position(self):
-        """Smoothly animate AVORA back to its original position."""
-        target_x = self._original_pos_x
-        target_y = self._original_pos_y
-        self._animate_to_position(target_x, target_y, 300, self._hide_close_indicator)
-
-    def _animate_to_position(self, target_x, target_y, duration_ms, callback=None):
-        """Smoothly animate window position using a QTimer loop."""
-        self._anim_target_x = target_x
-        self._anim_target_y = target_y
-        self._anim_start_x = self.x()
-        self._anim_start_y = self.y()
-        self._anim_duration = duration_ms
-        self._anim_elapsed = 0
-        self._anim_callback = callback
-        self._anim_timer = QTimer(self)
-        self._anim_timer.timeout.connect(self._tick_animation)
-        self._anim_timer.start(16)
-
-    def _tick_animation(self):
-        """Animation tick for smooth position interpolation."""
-        self._anim_elapsed += 16
-        t = min(1.0, self._anim_elapsed / self._anim_duration)
-        eased = 1 - (1 - t) ** 3
-        x = int(self._anim_start_x + (self._anim_target_x - self._anim_start_x) * eased)
-        y = int(self._anim_start_y + (self._anim_target_y - self._anim_start_y) * eased)
-        self.move(x, y)
-        if t >= 1.0:
-            self._anim_timer.stop()
-            self._anim_timer.deleteLater()
-            self._anim_timer = None
-            if self._anim_callback:
-                self._anim_callback()
-
-    def _hide_close_indicator(self):
-        """Hide the close indicator (X)."""
-        self.close_x_visible = False
-        self.close_x_scale = 1.0
-        self.close_x_opacity = 0.0
-        self.update()
 
     def paintEvent(
         self,
@@ -1892,10 +1980,20 @@ class Character(QWidget):
                 self.scale_factor,
             )
 
+        companion_scale = getattr(self, '_companion_visual_scale', 1.0)
+
+        if companion_scale != 1.0:
+
+            painter.scale(
+                companion_scale,
+                companion_scale,
+            )
+
         y = (
 
             self.float_offset
             + self.body_bob
+            + getattr(self, '_companion_y_offset', 0.0)
 
         )
 
@@ -1976,56 +2074,6 @@ class Character(QWidget):
             painter,
             y,
         )
-
-        # Draw the close (X) indicator on top - fixed at bottom-center
-        self._draw_close_indicator(painter)
-
-    # ========================================================
-    # CLOSE INDICATOR
-    # ========================================================
-
-    def _draw_close_indicator(self, painter):
-        """Draw the close (X) indicator fixed at the window bottom-center."""
-        if not self.close_x_visible:
-            return
-
-        cx = self.width() / 2.0
-        radius = self.X_BASE_RADIUS * self.close_x_scale
-        cy = self.height() - 45.0
-        cy = min(cy, self.height() - radius - 6.0)
-
-        sigma = max(0.0, min(1.0, self.close_x_opacity))
-        if sigma <= 0.0:
-            return
-
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-        # Outer glow
-        glow = QRadialGradient(QPointF(cx, cy), radius * 1.4)
-        glow.setColorAt(0.0, QColor(245, 82, 82, int(90 * sigma)))
-        glow.setColorAt(1.0, QColor(245, 82, 82, 0))
-        painter.setBrush(QBrush(glow))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(QPointF(cx, cy), radius * 1.4, radius * 1.4)
-
-        # Solid circle
-        circle_fill = QRadialGradient(QPointF(cx - radius * 0.2, cy - radius * 0.3), radius)
-        circle_fill.setColorAt(0.0, QColor(255, 103, 103, int(235 * sigma)))
-        circle_fill.setColorAt(1.0, QColor(235, 60, 70, int(225 * sigma)))
-        painter.setBrush(QBrush(circle_fill))
-        painter.setPen(QPen(QColor(255, 170, 170, int(160 * sigma)), 2.0))
-        painter.drawEllipse(QPointF(cx, cy), radius, radius)
-
-        # X mark
-        pen_width = max(2.5, radius * 0.16)
-        painter.setPen(QPen(QColor(255, 255, 255, int(250 * sigma)), pen_width,
-                            Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        off = radius * 0.38
-        painter.drawLine(QPointF(cx - off, cy - off), QPointF(cx + off, cy + off))
-        painter.drawLine(QPointF(cx + off, cy - off), QPointF(cx - off, cy + off))
-
-        painter.restore()
 
     # ========================================================
     # HEAD TRANSFORM
