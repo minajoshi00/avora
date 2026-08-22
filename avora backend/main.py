@@ -236,72 +236,6 @@ class VoiceRecognitionWorker(QThread):
 # ============================================================
 
 
-class CloseOverlay(QWidget):
-    """Frameless transparent always-on-top overlay showing the close target."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
-        )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.hide()
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        label = QLabel("✕", self)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet("""
-            QLabel {
-                color: #FFFFFF;
-                font-size: 48px;
-                font-weight: 800;
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #FF6B6B, stop:1 #FF4757);
-                border-radius: 48px;
-                border: 4px solid rgba(255, 255, 255, 0.4);
-            }
-        """)
-        layout.addWidget(label)
-        self._label = label
-
-    def update_progress(self, progress: float):
-        """Update size and opacity based on drag progress (0.0 to 1.0)."""
-        base_size = 64
-        max_size = 128
-        size = int(base_size + (max_size - base_size) * progress)
-        self.setFixedSize(size, size)
-        self._label.setFixedSize(size, size)
-
-        opacity = 0.4 + 0.6 * progress
-        border_alpha = int(opacity * 0.6 * 255)
-        self._label.setStyleSheet(f"""
-            QLabel {{
-                color: #FFFFFF;
-                font-size: {int(24 + 24 * progress)}px;
-                font-weight: 800;
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #FF6B6B, stop:1 #FF4757);
-                border-radius: {size // 2}px;
-                border: 4px solid rgba(255, 255, 255, {border_alpha / 255:.2f});
-            }}
-        """)
-
-    def position_at_bottom_center(self, screen):
-        """Position overlay at bottom-center of the given screen."""
-        if screen is None:
-            return
-        geo = screen.geometry()
-        x = geo.x() + (geo.width() - self.width()) // 2
-        y = geo.y() + geo.height() - self.height() - 20
-        self.move(x, y)
-
-
 class MainWindow(QWidget):
 
     # Used to control character talking animation.
@@ -365,6 +299,12 @@ class MainWindow(QWidget):
         self.neural_timer = None
         self.mouse_pos = None
 
+        # Cursor glow effect
+        self._cursor_glow = None
+        self._cursor_glow_target = None
+        self._cursor_glow_timer = None
+        self._cursor_glow_anim = None
+
         # Chat Sidebar System
         self.chats = []
         self.active_chat_id = None
@@ -372,13 +312,6 @@ class MainWindow(QWidget):
         self._updating_chat = False
 
         self._current_message = None
-
-        # Slide-down-to-close gesture state
-        self._is_dragging = False
-        self._drag_start_pos = None
-        self._drag_start_geom = None
-        self._drag_threshold = 180
-        self._close_overlay = None
 
         # ====================================================
         # SIGNALS
@@ -423,6 +356,8 @@ class MainWindow(QWidget):
         self.apply_styles()
 
         self.create_neural_background()
+
+        self.create_cursor_glow()
 
         self.create_ui()
 
@@ -604,8 +539,8 @@ class MainWindow(QWidget):
         theme = get_current_theme()
         is_dark = is_dark_mode()
 
-        node_color = QColor(139, 122, 255)  # Accent color
-        connection_color = QColor(139, 122, 255)
+        node_color = QColor(0, 255, 136)  # Accent color
+        connection_color = QColor(0, 255, 136)
 
         # Draw connections
         max_dist = 180
@@ -634,7 +569,71 @@ class MainWindow(QWidget):
     def mouseMoveEvent(self, event):
         """Track mouse position for neural interaction."""
         self.mouse_pos = event.pos()
+        if self._cursor_glow_target is None:
+            self._cursor_glow_target = event.pos()
+        else:
+            self._cursor_glow_target = event.pos()
         super().mouseMoveEvent(event)
+
+    # ========================================================
+    # CURSOR GLOW
+    # ========================================================
+
+    def create_cursor_glow(self):
+        """Create a soft neon-green cursor-following glow."""
+        if self._cursor_glow is not None:
+            return
+
+        glow = QWidget(self)
+        glow.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        glow.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        glow.setAttribute(Qt.WidgetAttribute.WA_AlwaysStackOnTop)
+        glow.setFixedSize(320, 320)
+        glow.hide()
+
+        effect = QGraphicsDropShadowEffect(glow)
+        effect.setBlurRadius(120)
+        effect.setOffset(0, 0)
+        effect.setColor(QColor(0, 255, 136, 60))
+        glow.setGraphicsEffect(effect)
+
+        self._cursor_glow = glow
+        self._cursor_glow_pos = QPoint(-200, -200)
+        self._cursor_glow_target = None
+
+        self._cursor_glow_timer = QTimer(self)
+        self._cursor_glow_timer.timeout.connect(self._update_cursor_glow)
+        self._cursor_glow_timer.start(16)
+
+    def _update_cursor_glow(self):
+        """Smoothly interpolate cursor glow toward target."""
+        if self._cursor_glow is None:
+            return
+
+        if self._cursor_glow_target is None:
+            self._cursor_glow.hide()
+            return
+
+        current = self._cursor_glow_pos
+        target = self._cursor_glow_target
+
+        dx = target.x() - current.x()
+        dy = target.y() - current.y()
+
+        if abs(dx) < 1 and abs(dy) < 1:
+            self._cursor_glow_pos = target
+        else:
+            self._cursor_glow_pos = QPoint(
+                int(current.x() + dx * 0.18),
+                int(current.y() + dy * 0.18),
+            )
+
+        self._cursor_glow.move(
+            self._cursor_glow_pos.x() - 160,
+            self._cursor_glow_pos.y() - 160,
+        )
+        self._cursor_glow.show()
+        self._cursor_glow.raise_()
 
     def resizeEvent(self, event):
         """Handle resize."""
@@ -660,169 +659,19 @@ class MainWindow(QWidget):
             screen = QGuiApplication.primaryScreen()
         return screen
 
-    def _create_close_overlay(self):
-        """Create the screen-level close overlay if it doesn't exist."""
-        if self._close_overlay is None:
-            self._close_overlay = CloseOverlay()
-        return self._close_overlay
-
-    def _show_close_overlay(self):
-        """Show the close overlay at bottom-center of the current screen.
-
-        Called only while a drag is in progress (from ``mousePressEvent`` and
-        ``mouseMoveEvent``), so the ❌ target is visible ONLY during an active
-        drag. It is anchored to the bottom-center of the full screen and is a
-        separate top-level window (never a child of AVORA), so it can never
-        appear over the AVORA interface.
-        """
-        overlay = self._create_close_overlay()
-        screen = self._get_current_screen()
-        if screen is None:
-            return
-        overlay.position_at_bottom_center(screen)
-        overlay.update_progress(0.0)
-        overlay.show()
-        overlay.raise_()
-
-    def _hide_close_overlay(self):
-        """Hide the close overlay."""
-        if self._close_overlay is not None:
-            self._close_overlay.hide()
-
-    def _update_close_overlay_for_drag(self, resisted_dy: float):
-        """Update close overlay size/opacity based on drag progress."""
-        if self._close_overlay is None:
-            return
-        progress = min(resisted_dy / self._drag_threshold, 1.0)
-        self._close_overlay.update_progress(progress)
-        if not self._close_overlay.isVisible():
-            self._show_close_overlay()
-
     def mousePressEvent(self, event):
-        """Handle mouse press to start drag-to-close gesture."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            print(f"[GESTURE] Press at {event.pos().x()}, {event.pos().y()}")
-            self._is_dragging = True
-            self._drag_start_pos = event.pos()
-            self._drag_start_geom = self.geometry()
-            self._show_close_overlay()
-            print("[GESTURE] Drag started, overlay shown")
-
+        """Handle mouse press."""
         self.mouse_pos = event.pos()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        """Handle mouse move for both neural background and drag-to-close gesture."""
-        if self._is_dragging and self._drag_start_pos is not None:
-            # Move AVORA to global mouse position
-            delta = event.pos() - self._drag_start_pos
-            new_pos = self.pos() + delta
-
-            # Keep AVORA within screen bounds
-            screen = self._get_current_screen()
-            if screen is not None:
-                geo = screen.geometry()
-                new_pos.setX(max(0, min(new_pos.x(), geo.width() - self.width())))
-                new_pos.setY(max(0, min(new_pos.y(), geo.height() - self.height())))
-            self.move(new_pos)
-
-            # The ❌ target stays stationary at bottom-center of screen.
-            # Reposition overlay to bottom-center of current screen regardless of AVORA position.
-            self._show_close_overlay()
-
-            print(f"[GESTURE] Move: AVORA at {self.pos()}")
-
-            self.mouse_pos = event.pos()
-            return
-
+        """Handle mouse move."""
         self.mouse_pos = event.pos()
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        """Handle mouse release for drag-to-close gesture."""
-        if not self._is_dragging:
-            super().mouseReleaseEvent(event)
-            return
-
-        self._is_dragging = False
-
-        current_geom = self.geometry()
-
-        # Detect whether AVORA overlaps the ❌ target at bottom-center of screen
-        dropped_on_target = self._overlaps_close_target(current_geom)
-
-        print(f"[GESTURE] Release: dropped_on_target={dropped_on_target}")
-
-        self._hide_close_overlay()
-
-        if dropped_on_target:
-            print("[GESTURE] Dropped on close target -> CLOSING")
-            self._animate_close()
-        else:
-            print("[GESTURE] Released outside target -> CANCEL")
-            self._animate_cancel()
-
-    def _overlaps_close_target(self, rect):
-        """Check whether the given AVORA geometry overlaps the ❌ close-target
-        hit area anchored at the bottom-center of the active screen."""
-
-        screen = self._get_current_screen()
-        if screen is None:
-            return False
-
-        geo = screen.geometry()
-        # Centre of the ❌ target: screen_width / 2, screen_height - 60
-        target_cx = geo.x() + geo.width() // 2
-        target_cy = geo.y() + geo.height() - 55
-
-        # Tolerance radius so the user does not need pixel-perfect accuracy
-        radius = 70
-
-        # Use AVORA's own centre and check against the target circle
-        avora_cx = rect.x() + rect.width() // 2
-        avora_cy = rect.y() + rect.height() // 2
-        dx = avora_cx - target_cx
-        dy = avora_cy - target_cy
-        return (dx * dx + dy * dy) <= radius * radius
-
-    def _animate_close(self):
-        """Animate the window sliding down and close it."""
-        screen = self._get_current_screen()
-        if screen is None:
-            self.close()
-            return
-
-        target_y = screen.availableGeometry().bottom() + 100
-        current_pos = self.pos()
-
-        print(f"[GESTURE] Animating close to y={target_y}")
-
-        anim = QPropertyAnimation(self, b"pos")
-        anim.setDuration(280)
-        anim.setStartValue(current_pos)
-        anim.setEndValue(QPoint(current_pos.x(), target_y))
-        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
-
-        anim.finished.connect(self.close)
-        anim.start()
-
-    def _animate_cancel(self):
-        """Animate the window springing back to its original position."""
-        if self._drag_start_geom is None:
-            return
-
-        current_pos = self.pos()
-        original_pos = self._drag_start_geom.topLeft()
-
-        print(f"[GESTURE] Animating cancel back to {original_pos.x()}, {original_pos.y()}")
-
-        anim = QPropertyAnimation(self, b"pos")
-        anim.setDuration(250)
-        anim.setStartValue(current_pos)
-        anim.setEndValue(original_pos)
-        anim.setEasingCurve(QEasingCurve.Type.OutBack)
-
-        anim.start()
+        """Handle mouse release."""
+        super().mouseReleaseEvent(event)
 
     # ========================================================
     # CREATE UI
@@ -952,21 +801,21 @@ class MainWindow(QWidget):
         self.new_chat_button.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #8B7AFF, stop:1 #6C63FF);
+                    stop:0 #00CC6A, stop:1 #00FF88);
                 border: none;
                 border-radius: 12px;
                 padding: 14px;
-                color: #FFFFFF;
+                color: #030703;
                 font-size: 14px;
                 font-weight: 600;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #9E91FF, stop:1 #817AFF);
+                    stop:0 #00DD77, stop:1 #33FFAA);
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #6C63FF, stop:1 #5149D8);
+                    stop:0 #00AA55, stop:1 #00DD77);
             }
         """)
 
@@ -1115,29 +964,14 @@ class MainWindow(QWidget):
             "HeaderTitle"
         )
 
-        header_status = QLabel(
-            "● Ready"
-        )
-
-        header_status.setObjectName(
-            "HeaderStatus"
-        )
-
-        self.status_label = header_status
-
         header_layout.addWidget(
             header_title
         )
 
-        header_layout.addSpacing(
-            10
+        header_layout.setAlignment(
+            header_title,
+            Qt.AlignmentFlag.AlignCenter
         )
-
-        header_layout.addWidget(
-            header_status
-        )
-
-        header_layout.addStretch()
 
         right_layout.addWidget(
             header
@@ -1468,7 +1302,7 @@ class MainWindow(QWidget):
             return
 
         self.character.setParent(
-            self.sidebar
+            self
         )
 
         self.character.show()
@@ -1477,6 +1311,10 @@ class MainWindow(QWidget):
 
         self.character.clicked.connect(
             self._on_character_clicked
+        )
+
+        self.character.restore_requested.connect(
+            self.save_companion_position
         )
 
         self.character_talking_signal.connect(
@@ -1488,6 +1326,16 @@ class MainWindow(QWidget):
         )
 
         self.position_character()
+
+        try:
+
+            self.character.apply_companion_settings()
+
+            self.restore_companion_position()
+
+        except Exception:
+
+            pass
 
     # ========================================================
     # ACTIVITY MONITOR
@@ -1926,6 +1774,47 @@ class MainWindow(QWidget):
 
                 self.stop_screen_awareness()
 
+        # ----------------------------------------------------
+        # COMPANION WIDGET
+        # ----------------------------------------------------
+
+        elif path == "companion_widget.enabled":
+
+            self.update_companion_visibility(
+                bool(new_value)
+            )
+
+        elif path == "companion_widget.size":
+
+            self.apply_companion_size(
+                new_value
+            )
+
+        elif path == "companion_widget.glow_intensity":
+
+            self.apply_companion_glow(
+                new_value
+            )
+
+        elif path == "companion_widget.glow_color":
+
+            self.apply_companion_glow_color(
+                new_value
+            )
+
+        elif path == "companion_widget.animation":
+
+            self.apply_companion_animation(
+                new_value
+            )
+
+        elif path in {
+            "companion_widget.position_x",
+            "companion_widget.position_y",
+        }:
+
+            self.restore_companion_position()
+
     # ========================================================
     # CHARACTER SIZE
     # ========================================================
@@ -1969,6 +1858,235 @@ class MainWindow(QWidget):
                 )
 
         self.position_character()
+
+    # ========================================================
+    # COMPANION WIDGET
+    # ========================================================
+
+    def update_companion_visibility(
+        self,
+        enabled,
+    ):
+
+        if self.character is None:
+
+            return
+
+        if enabled:
+
+            self.character.show()
+
+            self.character.raise_()
+
+            self.restore_companion_position()
+
+        else:
+
+            self.character.hide()
+
+    def apply_companion_size(
+        self,
+        value,
+    ):
+
+        if self.character is None:
+
+            return
+
+        try:
+
+            size = float(value)
+
+        except Exception:
+
+            return
+
+        method = getattr(
+            self.character,
+            "set_character_size",
+            getattr(self.character, "set_scale_factor", None)
+        )
+
+        if callable(method):
+
+            try:
+
+                method(
+                    size
+                )
+
+            except Exception as error:
+
+                print(
+                    "COMPANION SIZE ERROR:",
+                    error
+                )
+
+        self.position_character()
+
+    def apply_companion_glow(
+        self,
+        value,
+    ):
+
+        if self.character is None:
+
+            return
+
+        try:
+
+            intensity = float(value)
+
+        except Exception:
+
+            return
+
+        try:
+
+            self.character.update_glow(
+                intensity,
+                self.character._last_glow_color or "#00FF88",
+            )
+
+        except Exception:
+
+            pass
+
+    def apply_companion_glow_color(
+        self,
+        value,
+    ):
+
+        if self.character is None:
+
+            return
+
+        try:
+
+            from settings import get_setting
+
+            intensity = float(
+                get_setting(
+                    "companion_widget.glow_intensity",
+                    0.5,
+                )
+            )
+
+        except Exception:
+
+            intensity = 0.5
+
+        try:
+
+            self.character.update_glow(
+                intensity,
+                str(value),
+            )
+
+            self.character._last_glow_color = str(value)
+
+        except Exception:
+
+            pass
+
+    def apply_companion_animation(
+        self,
+        value,
+    ):
+
+        if self.character is None:
+
+            return
+
+        try:
+
+            self.character.update_animation(
+                str(value)
+            )
+
+        except Exception:
+
+            pass
+
+    def save_companion_position(
+        self,
+    ):
+
+        if self.character is None:
+
+            return
+
+        try:
+
+            from settings import set_setting
+
+            pos = self.character.pos()
+
+            set_setting(
+                "companion_widget.position_x",
+                pos.x(),
+            )
+
+            set_setting(
+                "companion_widget.position_y",
+                pos.y(),
+            )
+
+        except Exception:
+
+            pass
+
+    def restore_companion_position(
+        self,
+    ):
+
+        if self.character is None:
+
+            return
+
+        try:
+
+            from settings import get_setting
+
+            x = float(
+                get_setting(
+                    "companion_widget.position_x",
+                    -1,
+                )
+            )
+
+            y = float(
+                get_setting(
+                    "companion_widget.position_y",
+                    -1,
+                )
+            )
+
+        except Exception:
+
+            x = -1
+
+            y = -1
+
+        if x < 0 or y < 0:
+
+            margin = 12
+
+            x = margin
+
+            y = max(
+                margin,
+                self.height() - self.character.height() - margin,
+            )
+
+        self.character._user_positioned = True
+
+        self.character.move(
+            int(x),
+            int(y),
+        )
+
+        self.character.raise_()
 
     # ========================================================
     # VOICE BUTTON
@@ -2030,6 +2148,18 @@ class MainWindow(QWidget):
             self.status_label.setStyleSheet(
                 "color: #65E6A5;"
             )
+
+        if self.character is not None:
+
+            try:
+
+                self.character.set_ai_state(
+                    state
+                )
+
+            except Exception:
+
+                pass
 
     # ========================================================
     # TOGGLE VOICE
@@ -3084,9 +3214,9 @@ class MainWindow(QWidget):
             "  font-size: 11px;"
             "}"
             "QPushButton:hover {"
-            "  background-color: #292944;"
-            "  color: #FFFFFF;"
-            "  border-color: #6C63FF;"
+            "  background-color: #153015;"
+            "  color: #E6FFEC;"
+            "  border-color: #00FF88;"
             "}"
         )
         user_msg = browser.property("user_message") or ""
@@ -3982,32 +4112,74 @@ class MainWindow(QWidget):
 
             return
 
-        if self.character.parent() is not self.sidebar:
-            self.character.setParent(
-                self.sidebar
+        if self.character.parent() is self.sidebar:
+
+            self.character.set_scale_factor(
+                self.get_character_scale_factor()
             )
 
-        self.character.set_scale_factor(
-            self.get_character_scale_factor()
-        )
+            sidebar_rect = self.sidebar.contentsRect()
+            margin = 18
+            x = max(
+                0,
+                (sidebar_rect.width() - self.character.width()) // 2,
+            )
+            y = max(
+                margin,
+                sidebar_rect.bottom() - self.character.height() - margin,
+            )
 
-        sidebar_rect = self.sidebar.contentsRect()
-        margin = 18
-        x = max(
-            0,
-            (sidebar_rect.width() - self.character.width()) // 2,
-        )
-        y = max(
-            margin,
-            sidebar_rect.bottom() - self.character.height() - margin,
-        )
+            self.character.move(
+                x,
+                y
+            )
 
-        self.character.move(
-            x,
-            y
-        )
+            self.character.raise_()
 
-        self.character.raise_()
+        elif self.character.parent() is self:
+
+            if not hasattr(self.character, '_user_positioned') or not self.character._user_positioned:
+
+                margin = 12
+                x = margin
+                y = max(
+                    margin,
+                    self.height() - self.character.height() - margin,
+                )
+                self.character.move(
+                    x,
+                    y
+                )
+                self.character.raise_()
+
+            else:
+
+                margin = 12
+                x = max(
+                    margin,
+                    min(
+                        self.character.x(),
+                        self.width() - self.character.width() - margin,
+                    ),
+                )
+                y = max(
+                    margin,
+                    min(
+                        self.character.y(),
+                        self.height() - self.character.height() - margin,
+                    ),
+                )
+
+                if self.character.x() != x or self.character.y() != y:
+
+                    self.character.move(
+                        x,
+                        y
+                    )
+
+                    self.save_companion_position()
+
+                self.character.raise_()
 
     # ========================================================
     # RESIZE
@@ -4219,14 +4391,6 @@ class MainWindow(QWidget):
         except Exception:
             pass
 
-        try:
-            if self._close_overlay is not None:
-                self._close_overlay.hide()
-                self._close_overlay.deleteLater()
-                self._close_overlay = None
-        except Exception:
-            pass
-
         event.accept()
 
 
@@ -4273,7 +4437,7 @@ def show_splash_screen():
     logo = QLabel("✦")
     logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
     logo.setFont(QFont("Segoe UI", 48, QFont.Weight.Bold))
-    logo.setStyleSheet("color: #8B7AFF; background: transparent;")
+    logo.setStyleSheet("color: #00FF88; background: transparent;")
 
     # Title
     title = QLabel("AVORA")

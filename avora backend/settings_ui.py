@@ -26,6 +26,7 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -136,6 +137,11 @@ CATEGORIES = [
     (
         "Character",
         "AI Friend character behavior",
+    ),
+
+    (
+        "Companion Settings",
+        "Customize the floating companion appearance and behavior",
     ),
 
     (
@@ -913,6 +919,9 @@ class SettingsPage(QWidget):
             "Character":
             self.build_character,
 
+            "Companion Settings":
+            self.build_companion,
+
             "Appearance":
             self.build_appearance,
 
@@ -1638,6 +1647,282 @@ class SettingsPage(QWidget):
         )
 
         self.add_spacer()
+
+    # ============================================================
+    # COMPANION SETTINGS
+    # ============================================================
+
+    def build_companion(self):
+
+        self.add_section(
+            "Companion Settings",
+            "Customize the floating companion appearance and behavior.",
+        )
+
+        self.add_switch(
+            "companion_widget.enabled",
+            "Enable Companion",
+            "Show the floating Avora companion on your desktop.",
+        )
+
+        preview_container = QWidget()
+        preview_layout = QVBoxLayout(preview_container)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(8)
+
+        preview_header = QLabel("Live Preview")
+        preview_header.setStyleSheet(
+            f"""
+            color: {TEXT};
+            font-size: 13px;
+            font-weight: 600;
+            background: transparent;
+            """
+        )
+        preview_layout.addWidget(preview_header)
+
+        preview_frame = QFrame()
+        preview_frame.setObjectName("CompanionPreviewFrame")
+        preview_frame.setFixedHeight(220)
+        preview_frame.setStyleSheet(
+            f"""
+            QFrame#CompanionPreviewFrame {{
+                background: {CARD};
+                border: 1px solid {BORDER};
+                border-radius: 16px;
+            }}
+            """
+        )
+        preview_inner = QHBoxLayout(preview_frame)
+        preview_inner.setContentsMargins(16, 16, 16, 16)
+        preview_inner.setSpacing(12)
+
+        try:
+            from character import Character
+            self.preview_character = Character(preview_frame)
+            self.preview_character.set_scale_factor(0.6)
+            preview_inner.addWidget(self.preview_character, 0, Qt.AlignmentFlag.AlignCenter)
+        except Exception as e:
+            print("[PREVIEW] Failed to create preview character:", e)
+            self.preview_character = None
+            placeholder = QLabel("Preview unavailable")
+            placeholder.setStyleSheet(f"color: {MUTED}; background: transparent;")
+            preview_inner.addWidget(placeholder, 0, Qt.AlignmentFlag.AlignCenter)
+
+        preview_layout.addWidget(preview_frame)
+        self.content_layout.addWidget(preview_container)
+
+        self.add_slider(
+            "companion_widget.size",
+            "Size",
+            "Control the size of the floating companion.",
+            0.5,
+            2.0,
+            1.0,
+            1,
+        )
+
+        self.add_slider(
+            "companion_widget.glow_intensity",
+            "Glow Intensity",
+            "Control the brightness of the companion glow effect.",
+            0.0,
+            1.0,
+            0.5,
+            1,
+        )
+
+        glow_color_row = QWidget()
+        glow_color_layout = QHBoxLayout(glow_color_row)
+        glow_color_layout.setContentsMargins(0, 0, 0, 0)
+        glow_color_layout.setSpacing(8)
+
+        glow_color_label = QLabel("Glow Color")
+        glow_color_label.setStyleSheet(
+            f"""
+            color: {TEXT};
+            font-size: 14px;
+            font-weight: 600;
+            background: transparent;
+            """
+        )
+        glow_color_layout.addWidget(glow_color_label)
+
+        glow_color_presets = QWidget()
+        glow_color_presets_layout = QHBoxLayout(glow_color_presets)
+        glow_color_presets_layout.setContentsMargins(0, 0, 0, 0)
+        glow_color_presets_layout.setSpacing(6)
+
+        self.glow_color_buttons = []
+        preset_colors = [
+            ("Green", "#00FF88"),
+            ("Cyan", "#00B4D8"),
+            ("Purple", "#9B5CFF"),
+            ("Blue", "#3B82F6"),
+            ("Pink", "#EC4899"),
+        ]
+
+        for label, color in preset_colors:
+            btn = QPushButton()
+            btn.setFixedSize(28, 28)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(label)
+            btn.setStyleSheet(
+                f"""
+                QPushButton {{
+                    background: {color};
+                    border: 2px solid transparent;
+                    border-radius: 14px;
+                }}
+                QPushButton:hover {{
+                    border: 2px solid {TEXT};
+                }}
+                QPushButton:checked {{
+                    border: 2px solid {TEXT};
+                }}
+                """
+            )
+            btn.setCheckable(True)
+            btn.clicked.connect(
+                lambda _, c=color, b=btn: self._set_glow_color(c, b)
+            )
+            glow_color_presets_layout.addWidget(btn)
+            self.glow_color_buttons.append(btn)
+
+        self.custom_color_btn = QPushButton()
+        self.custom_color_btn.setFixedSize(28, 28)
+        self.custom_color_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.custom_color_btn.setToolTip("Custom")
+        self.custom_color_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: #FFFFFF;
+                border: 2px dashed {BORDER};
+                border-radius: 14px;
+            }}
+            QPushButton:hover {{
+                border: 2px solid {TEXT};
+            }}
+            """
+            f"""
+            QPushButton::menu-indicator {{
+                width: 0;
+                height: 0;
+            }}
+            """
+        )
+        self.custom_color_btn.clicked.connect(self._pick_custom_glow_color)
+        glow_color_presets_layout.addWidget(self.custom_color_btn)
+
+        glow_color_layout.addWidget(glow_color_presets)
+        self.content_layout.addWidget(glow_color_row)
+
+        self._update_glow_color_buttons()
+
+        self.add_combo(
+            "companion_widget.animation",
+            "Animation",
+            "Choose the idle animation style for the companion.",
+            [
+                "none",
+                "gentle_float",
+                "pulse",
+                "bounce",
+                "breathing",
+                "glow_pulse",
+            ],
+            [
+                "None",
+                "Gentle Float",
+                "Pulse",
+                "Bounce",
+                "Breathing",
+                "Glow Pulse",
+            ],
+        )
+
+        reset_button = QPushButton(
+            "Reset to Default"
+        )
+        reset_button.setCursor(
+            Qt.CursorShape.PointingHandCursor
+        )
+        reset_button.clicked.connect(
+            self._reset_companion_settings
+        )
+        self.content_layout.addWidget(reset_button)
+
+        self.settings_changed.connect(
+            self._on_companion_setting_changed
+        )
+
+    def _update_glow_color_buttons(self):
+        try:
+            from settings import get_setting
+            current_color = get_setting("companion_widget.glow_color", "#00FF88")
+        except Exception:
+            current_color = "#00FF88"
+
+        preset_colors = ["#00FF88", "#00B4D8", "#9B5CFF", "#3B82F6", "#EC4899"]
+        for i, btn in enumerate(self.glow_color_buttons):
+            btn.setChecked(current_color == preset_colors[i])
+
+    def _set_glow_color(self, color, button):
+        try:
+            from settings import set_setting
+            set_setting("companion_widget.glow_color", color)
+        except Exception:
+            pass
+        for btn in self.glow_color_buttons:
+            btn.setChecked(False)
+        button.setChecked(True)
+        self._update_preview_character()
+
+    def _pick_custom_glow_color(self):
+        try:
+            from settings import get_setting
+            current = get_setting("companion_widget.glow_color", "#00FF88")
+        except Exception:
+            current = "#00FF88"
+
+        color = QColorDialog.getColor(QColor(current), self, "Select Glow Color")
+        if color.isValid():
+            hex_color = color.name().upper()
+            try:
+                from settings import set_setting
+                set_setting("companion_widget.glow_color", hex_color)
+            except Exception:
+                pass
+            for btn in self.glow_color_buttons:
+                btn.setChecked(False)
+            self._update_preview_character()
+
+    def _on_companion_setting_changed(self, path, value):
+        if path and path.startswith("companion_widget."):
+            self._update_preview_character()
+            self._update_glow_color_buttons()
+
+    def _update_preview_character(self):
+        if hasattr(self, 'preview_character') and self.preview_character is not None:
+            try:
+                self.preview_character.apply_companion_settings()
+            except Exception:
+                pass
+
+    def _reset_companion_settings(self):
+        try:
+            from settings import set_setting
+            set_setting("companion_widget.enabled", True)
+            set_setting("companion_widget.size", 1.0)
+            set_setting("companion_widget.glow_intensity", 0.5)
+            set_setting("companion_widget.glow_color", "#00FF88")
+            set_setting("companion_widget.animation", "gentle_float")
+            set_setting("companion_widget.position_x", -1)
+            set_setting("companion_widget.position_y", -1)
+        except Exception:
+            pass
+        self._update_glow_color_buttons()
+        self._update_preview_character()
 
     # ============================================================
     # APPEARANCE
