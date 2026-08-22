@@ -1426,13 +1426,110 @@ class ProactiveSuggester:
             UserState.STUCK,
         ):
             return {
-                "message": "You've been at it for a while bro! Maybe take a short break? 🧘",
+                "message": "You've been at it for a while bro! Maybe a little break? 🧘",
                 "character_emotion": "concerned",
                 "type": InterventionType.BREAK_REMINDER,
                 "confidence": 0.6,
             }
 
         return None
+
+    # =========================================================
+    # V2: GOAL / MEMORY AWARE SUGGESTIONS
+    # =========================================================
+
+    def get_goal_suggestion(
+        self,
+        goal: dict,
+        cooldown_key: str = "goal_continuation",
+    ) -> dict | None:
+        """
+        Build a gentle suggestion to continue an idle goal.
+
+        Only fires when:
+          - Proactive suggestions are enabled in settings
+          - The goal has been idle for a while (not abandoned)
+          - The cooldown has elapsed (never spams)
+        """
+        try:
+            from settings import get_setting
+
+            if not get_setting("activity_awareness.proactive_notifications", True):
+                return None
+        except Exception:
+            pass
+
+        now = time.time()
+        last = self._cooldowns.get(cooldown_key, 0)
+        if now - last < _COOLDOWN_DEFAULTS.get(
+            InterventionType.PROACTIVE_SUGGESTION, 600
+        ):
+            return None
+
+        description = goal.get("description", "")
+        if not description:
+            return None
+
+        self._cooldowns[cooldown_key] = now
+        type_key = InterventionType.PROACTIVE_SUGGESTION.value
+        self._intervention_counts[type_key] = (
+            self._intervention_counts.get(type_key, 0) + 1
+        )
+
+        return {
+            "message": (
+                f"You were working on '{description}' earlier. Want to continue?"
+            ),
+            "character_emotion": "curious",
+            "type": InterventionType.PROACTIVE_SUGGESTION,
+            "confidence": 0.7,
+        }
+
+    def get_memory_recall_suggestion(
+        self,
+        memory: dict,
+        cooldown_key: str = "memory_recall",
+    ) -> dict | None:
+        """
+        Suggest recalling a meaningful journey memory.
+
+        Fires only when proactive suggestions are enabled and
+        the cooldown has elapsed. Never fabricates - only uses
+        memories that actually exist.
+        """
+        try:
+            from settings import get_setting
+
+            if not get_setting("activity_awareness.proactive_notifications", True):
+                return None
+        except Exception:
+            pass
+
+        now = time.time()
+        last = self._cooldowns.get(cooldown_key, 0)
+        if now - last < _COOLDOWN_DEFAULTS.get(
+            InterventionType.PROACTIVE_SUGGESTION, 600
+        ):
+            return None
+
+        text = str(memory.get("text", "")).strip()
+        if not text:
+            return None
+
+        self._cooldowns[cooldown_key] = now
+        type_key = InterventionType.PROACTIVE_SUGGESTION.value
+        self._intervention_counts[type_key] = (
+            self._intervention_counts.get(type_key, 0) + 1
+        )
+
+        return {
+            "message": (
+                f"By the way, you mentioned '{text}' before. Want to pick that back up?"
+            ),
+            "character_emotion": "curious",
+            "type": InterventionType.PROACTIVE_SUGGESTION,
+            "confidence": 0.6,
+        }
 
 
 # =============================================================
@@ -2086,12 +2183,34 @@ class CompanionIntelligence:
             # First try context-aware dialogue generator
             try:
                 suggestion = self.dialogue_generator.generate(snapshot)
-            except Exception as e:
-                logger.debug(f"Contextual dialogue error: {e}")
+            except Exception as exc:
+                logger.debug(f"Contextual dialogue error: {exc}")
 
             # Fall back to ProactiveSuggester
             if not suggestion:
                 suggestion = self.suggester.get_suggestion(snapshot, mood)
+
+            # V2: Goal continuation suggestion (idle-but-not-abandoned goal)
+            if not suggestion:
+                try:
+                    candidate = self.goals.get_continuation_candidate()
+                    if candidate:
+                        suggestion = self.suggester.get_goal_suggestion(candidate)
+                except Exception as exc:
+                    logger.debug(f"Goal suggestion error: {exc}")
+
+            # V2: Journey memory recall suggestion
+            if not suggestion:
+                try:
+                    from memory import get_journey_memories
+
+                    memories = get_journey_memories(min_importance=0.6)[:1]
+                    if memories:
+                        suggestion = self.suggester.get_memory_recall_suggestion(
+                            memories[0]
+                        )
+                except Exception as exc:
+                    logger.debug(f"Memory recall suggestion error: {exc}")
 
             if suggestion:
                 # Check message cooldown
