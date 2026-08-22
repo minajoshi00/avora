@@ -12,8 +12,13 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
+# Add the avora backend directory to Python path
+backend_dir = os.path.join(project_root, "avora backend")
+if os.path.isdir(backend_dir):
+    sys.path.insert(0, backend_dir)
+
 from PySide6.QtCore import QObject, Signal, Slot
-from avora.backend.agent.orchestrator import AgentOrchestrator
+from agent.orchestrator import AgentOrchestrator
 
 
 class AgentBridge(QObject):

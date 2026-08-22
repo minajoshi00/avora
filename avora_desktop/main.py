@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QProgressBar, QTextEdit, QListWidget, QListWidgetItem, QStackedWidget,
     QSpacerItem, QSizePolicy, QGraphicsOpacityEffect
 )
-from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, qApp, QPropertyAnimation
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, QPropertyAnimation
 from PySide6.QtGui import QFont, QPainter, QColor, QIcon, QTextOption
 from PySide6.QtCore import QEasingCurve
 
