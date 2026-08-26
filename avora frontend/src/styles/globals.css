@@ -229,7 +229,10 @@ h1, h2, h3, h4, h5, h6 {
 .avora-bg {
 	position: fixed;
 	inset: 0;
-	z-index: 0;
+	/* Behind ALL content — including unpositioned routes like Admin — so the
+	   ambient layer can never paint over the UI. Body/canvas background still
+	   shows beneath it, keeping it visible through transparent sections. */
+	z-index: -1;
 	overflow: hidden;
 	pointer-events: none;
 }
