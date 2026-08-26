@@ -7,7 +7,7 @@
  */
 
 // Shared analytics state - initialized from server
-let analyticsData = { events: [], counters: me };
+let analyticsData = { events: [], counters: {} };
 
 /**
  * Set the analytics data reference (called from server startup).

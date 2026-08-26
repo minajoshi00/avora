@@ -169,12 +169,6 @@ export function getSummary(range = '7d', data) {
     series.errors.push(0);
   }
 
-  // Growth rates
-  const gDownloads = { rate: 0 };
-  const gConversations = { rate: 0 };
-  const gUsers = { rate: 0 };
-  const gViews = { rate: 0 };
-
   return {
     range,
     generatedAt: new Date().toISOString(),

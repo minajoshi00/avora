@@ -18,7 +18,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:url';
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 import { trackEvent } from './src/events.js';
 import { getSummary } from './src/queries.js';
@@ -144,6 +144,49 @@ app.get('/api/status', (req, res) => {
     dataFile: JSON_PATH,
     timestamp: new Date().toISOString(),
   });
+});
+
+/* -------------------------------------------------------------------------- */
+/*                     Maintenance Mode (used by the web app)                 */
+/* -------------------------------------------------------------------------- */
+/* The front end polls GET /api/admin/maintenance/status on every load and    */
+/* the admin dashboard toggles via POST /api/admin/maintenance.               */
+/* State is persisted next to the analytics data (fail-safe: offline).        */
+
+const MAINTENANCE_PATH = join(DATA_DIR, 'maintenance.json');
+let maintenanceMode = false;
+
+try {
+	if (existsSync(MAINTENANCE_PATH)) {
+		const raw = JSON.parse(readFileSync(MAINTENANCE_PATH, 'utf8'));
+		maintenanceMode = raw?.maintenanceMode === true;
+	}
+} catch {
+	maintenanceMode = false;
+}
+
+const MAINTENANCE_PASSWORD =
+	process.env.MAINTENANCE_ADMIN_PASSWORD ||
+	process.env.AVORA_ANALYTICS_ADMIN_KEY ||
+	'';
+
+app.get('/api/admin/maintenance/status', (_req, res) => {
+	res.json({ ok: true, maintenanceMode });
+});
+
+app.post('/api/admin/maintenance', (req, res) => {
+	const password = req.body?.password;
+	if (!MAINTENANCE_PASSWORD || password !== MAINTENANCE_PASSWORD) {
+		return res.status(401).json({ ok: false, error: 'Unauthorized. Invalid admin password.' });
+	}
+	maintenanceMode = !maintenanceMode;
+	try {
+		mkdirSync(DATA_DIR, { recursive: true });
+		writeFileSync(MAINTENANCE_PATH, JSON.stringify({ maintenanceMode }, null, 2));
+	} catch {
+		/* persistence failure should not break the request */
+	}
+	res.json({ ok: true, maintenanceMode });
 });
 
 /* -------------------------------------------------------------------------- */
