@@ -67,9 +67,9 @@ export default function App() {
         const res = await fetch('/api/admin/maintenance/status', { cache: 'no-store' });
         const data = await res.json();
         setMaintenanceMode(data.maintenanceMode || false);
-        if (!data.maintenanceMode && currentPath?.startsWith('#/admin')) {
-          window.location.reload();
-        }
+        // NOTE: never reload here. Recovery from the maintenance screen is
+        // handled by MaintenancePage (manual/auto refresh). Reloading on
+        // admin routes caused an infinite reload loop.
       } catch {
         setMaintenanceMode(false);
       }

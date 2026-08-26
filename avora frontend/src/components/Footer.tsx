@@ -6,24 +6,10 @@ import { hasValidSession, verifyPassword, isLockedOut, getLockoutRemaining, getF
 export function Footer() {
   const [showLogin, setShowLogin] = useState(false);
 
-  useEffect(() => {
-    const handlePopState = () => {
-      if (window.location.hash === '#/admin') {
-        if (!hasValidSession()) {
-          window.location.hash = '';
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    window.addEventListener('hashchange', handlePopState);
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('hashchange', handlePopState);
-    };
-  }, []);
+  // NOTE: no hash guard here. Route protection is owned by App.tsx
+  // (renders AdminLogin for unauthenticated #/admin) and by
+  // AdminDashboardPage. Clearing the hash from a global listener made it
+  // impossible to reach the admin login screen via a direct URL.
 
   const handleDeveloperClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
