@@ -531,10 +531,10 @@ def generate_qss() -> str:
     }}
 
     #HeaderTitle {{
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 700;
-        color: rgba(230, 255, 236, 0.6);
-        letter-spacing: 1.5px;
+        color: rgba(230, 255, 236, 0.75);
+        letter-spacing: 1.4px;
     }}
 
     #HudStatus {{
@@ -546,7 +546,7 @@ def generate_qss() -> str:
     }}
 
     /* =================================================
-       CHAT AREA
+       CHAT AREA — ONLY SCROLLABLE CONTAINER
     ================================================= */
 
     #ChatArea {{
@@ -556,29 +556,31 @@ def generate_qss() -> str:
 
     #MessageArea {{
         background-color: transparent;
-        padding: 6px 0 0 0;
+        padding: 8px 0 0 0;
     }}
 
     /* =================================================
-       MESSAGE BUBBLES
+       MESSAGE BUBBLES — POLISHED SPACING
     ================================================= */
 
     #UserBubble {{
         background-color: {ch["user_bubble"]};
-        border-radius: 14px;
-        padding: 9px 14px;
+        border-radius: 16px;
+        border-bottom-right-radius: 6px;
+        padding: 10px 16px;
         font-size: 14px;
-        line-height: 1.45;
+        line-height: 1.5;
         color: {ch["user_text"]};
     }}
 
     #AIBubble {{
         background-color: {ch["ai_bubble"]};
         border: 1px solid {ch["ai_border"]};
-        border-radius: 14px;
-        padding: 10px 14px;
+        border-radius: 16px;
+        border-bottom-left-radius: 6px;
+        padding: 12px 16px;
         font-size: 14px;
-        line-height: 1.55;
+        line-height: 1.6;
         color: {ch["ai_text"]};
     }}
 
@@ -595,14 +597,14 @@ def generate_qss() -> str:
     }}
 
     /* =================================================
-       INPUT AREA
+       INPUT AREA — ALWAYS VISIBLE COMPOSER
     ================================================= */
 
     #InputContainer {{
         background-color: {s["input"]};
         border: 1px solid {br["default"]};
         border-radius: 24px;
-        padding: 4px;
+        padding: 4px 6px;
     }}
 
     #InputContainer:focus-within {{
@@ -614,8 +616,8 @@ def generate_qss() -> str:
         background-color: transparent;
         border: none;
         color: {tx["primary"]};
-        font-size: 15px;
-        padding: 10px 12px;
+        font-size: 14px;
+        padding: 10px 14px;
         selection-background-color: {a["muted"]};
         selection-color: {tx["primary"]};
     }}
@@ -636,9 +638,9 @@ def generate_qss() -> str:
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
             stop:0 #00CC6A, stop:1 #00FF88);
         border: none;
-        border-radius: 16px;
+        border-radius: 14px;
         color: {bt["primary_text"]};
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 700;
     }}
 
@@ -650,6 +652,7 @@ def generate_qss() -> str:
     #SendButton:pressed {{
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
             stop:0 #00AA55, stop:1 #00DD77);
+        padding-top: 1px;
     }}
 
     #SendButton:disabled {{
@@ -660,9 +663,9 @@ def generate_qss() -> str:
     #MicButton {{
         background-color: {s["input"]};
         border: 1px solid {br["default"]};
-        border-radius: 16px;
+        border-radius: 14px;
         color: {tx["secondary"]};
-        font-size: 18px;
+        font-size: 16px;
     }}
 
     #MicButton:hover {{

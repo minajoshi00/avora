@@ -963,163 +963,162 @@ class MainWindow(QWidget):
         # ====================================================
 
         header = QFrame()
-
         header.setObjectName("Header")
-
-        header.setFixedHeight(56)
-
+        header.setFixedHeight(52)
+        # Header is fixed — never scrolls, subtle polish
+        header.setStyleSheet("QFrame#Header { background: rgba(255,255,255,0.015); border-bottom: 1px solid rgba(255,255,255,0.06); }")
         header_layout = QHBoxLayout(header)
-
-        header_layout.setContentsMargins(25, 0, 25, 0)
-
+        header_layout.setContentsMargins(24, 0, 24, 0)
         header_inner = QVBoxLayout()
-
-        header_inner.setContentsMargins(0, 8, 0, 8)
-
-        header_inner.setSpacing(2)
-
+        header_inner.setContentsMargins(0, 6, 0, 6)
+        header_inner.setSpacing(1)
         header_title = QLabel("AVORA")
-
         header_title.setObjectName("HeaderTitle")
-
         header_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
         header_inner.addWidget(header_title)
-
         # Status indicator ("Ready" / "Thinking" / "Error" ...)
         self.status_label = QLabel("● Ready")
-
         self.status_label.setObjectName("StatusLabel")
-
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
         self.status_label.setStyleSheet("""
             color: #65E6A5;
             font-size: 11px;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.6px;
             background: transparent;
         """)
-
         header_inner.addWidget(self.status_label)
-
         header_layout.addStretch(1)
-
         header_layout.addLayout(header_inner)
-
         header_layout.addStretch(1)
-
         right_layout.addWidget(header)
 
         # ====================================================
-        # CHAT AREA
+        # CHAT AREA — ONLY SCROLLABLE AREA (FIXED VIEWPORT PATTERN)
+        # ROOT = overflow hidden, CHAT = overflow-y auto, COMPOSER = fixed
         # ====================================================
 
         self.chat_area = QScrollArea()
-
         self.chat_area.setObjectName("ChatArea")
-
         self.chat_area.setWidgetResizable(True)
-
         self.chat_area.setFrameShape(QFrame.Shape.NoFrame)
-
-        self.chat_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self.chat_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.chat_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # Chat area expands to fill available space between header and composer
+        self.chat_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.message_widget = QWidget()
-
         self.message_widget.setObjectName("MessageArea")
 
         self.message_layout = QVBoxLayout(self.message_widget)
-
-        self.message_layout.setContentsMargins(28, 16, 28, 12)
-
-        self.message_layout.setSpacing(8)
-
+        # Balanced padding: top/bottom breathing room, centered conversation width via row wrappers
+        self.message_layout.setContentsMargins(20, 20, 20, 16)
+        self.message_layout.setSpacing(14)
         self.message_layout.addStretch()
 
         self.chat_area.setWidget(self.message_widget)
 
         right_layout.addWidget(self.chat_area, 1)
 
+        # Smart auto-scroll: only force scroll if user is near bottom
+        self._auto_scroll_enabled = True
+        self.chat_area.verticalScrollBar().valueChanged.connect(self._on_chat_scroll)
+
+        # Floating "scroll to latest" button (appears when user scrolls up)
+        from PySide6.QtWidgets import QPushButton as _PB
+        self._scroll_down_btn = _PB("↓", self.chat_area.viewport())
+        self._scroll_down_btn.setObjectName("ScrollDownBtn")
+        self._scroll_down_btn.setFixedSize(36, 36)
+        self._scroll_down_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._scroll_down_btn.setStyleSheet("""
+            QPushButton#ScrollDownBtn {
+                background: rgba(0,255,136,0.16);
+                border: 1px solid rgba(0,255,136,0.28);
+                border-radius: 18px;
+                color: #E6FFEC;
+                font-size: 16px;
+            }
+            QPushButton#ScrollDownBtn:hover {
+                background: rgba(0,255,136,0.26);
+                border-color: rgba(0,255,136,0.45);
+            }
+        """)
+        self._scroll_down_btn.clicked.connect(lambda: self.scroll_to_bottom(force=True))
+        self._scroll_down_btn.hide()
+        # Position on resize
+        self._chat_area_prev_resize = self.chat_area.viewport().size
+
         # ====================================================
-        # INPUT
+        # COMPOSER — ALWAYS VISIBLE, NEVER INSIDE SCROLL
         # ====================================================
 
         input_outer = QFrame()
-
-        input_outer.setMinimumHeight(96)
-
+        input_outer.setObjectName("ComposerOuter")
+        input_outer.setFixedHeight(84)
+        # Composer outer: subtle top border, fixed — never scrolls away
+        input_outer.setStyleSheet("QFrame#ComposerOuter { background: rgba(255,255,255,0.02); border-top: 1px solid rgba(255,255,255,0.06); }")
         input_layout = QHBoxLayout(input_outer)
-
-        input_layout.setContentsMargins(18, 12, 18, 18)
+        input_layout.setContentsMargins(16, 10, 16, 14)
+        input_layout.setSpacing(0)
 
         self.input_container = QFrame()
-
         self.input_container.setObjectName("InputContainer")
-
         self.apply_shadow(
             self.input_container,
             blur=18,
             offset=0,
-            alpha=100,
+            alpha=80,
         )
-
         input_container_layout = QHBoxLayout(self.input_container)
-
-        input_container_layout.setContentsMargins(10, 6, 10, 6)
+        input_container_layout.setContentsMargins(8, 5, 8, 5)
+        input_container_layout.setSpacing(6)
 
         self.user_input = ChatComposer()
-
         self.user_input.setObjectName("InputBox")
-
         self.user_input.setPlaceholderText("Message your AI Friend...")
-
         self.user_input.send_handler = self.send_message
-
         self.user_input.send_owner = self
 
-        self.send_button = QPushButton("➤")
-
-        self.send_button.setObjectName("SendButton")
-
-        self.send_button.setFixedSize(48, 42)
-
-        self.send_button.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        self.send_button.clicked.connect(self.send_message)
-
-        input_container_layout.addWidget(self.user_input, 1)
-
-        input_container_layout.addWidget(self.send_button)
-
         self.attach_button = QPushButton("📎")
-
         self.attach_button.setObjectName("AttachButton")
-
-        self.attach_button.setFixedSize(42, 42)
-
+        self.attach_button.setFixedSize(36, 36)
         self.attach_button.setCursor(Qt.CursorShape.PointingHandCursor)
-
+        self.attach_button.setToolTip("Attach file")
         self.attach_button.clicked.connect(self._attach_file)
-
+        self.attach_button.setStyleSheet("""
+            QPushButton#AttachButton {
+                background: transparent;
+                border: none;
+                border-radius: 10px;
+                color: #8A8A99;
+                font-size: 16px;
+            }
+            QPushButton#AttachButton:hover {
+                background: rgba(255,255,255,0.06);
+                color: #E6FFEC;
+            }
+        """)
         self.attached_files = []
 
-        input_container_layout.addWidget(self.attach_button)
+        self.send_button = QPushButton("➤")
+        self.send_button.setObjectName("SendButton")
+        self.send_button.setFixedSize(40, 36)
+        self.send_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.send_button.setToolTip("Send message (Enter)")
+        self.send_button.clicked.connect(self.send_message)
 
         self.mic_button = QPushButton("🎤")
-
         self.mic_button.setObjectName("MicButton")
-
-        self.mic_button.setFixedSize(48, 42)
-
+        self.mic_button.setFixedSize(40, 36)
         self.mic_button.setCursor(Qt.CursorShape.PointingHandCursor)
-
+        self.mic_button.setToolTip("Voice input")
         self.mic_button.clicked.connect(self.toggle_voice_input)
-
         self.is_listening = False
 
+        # Order: attach — input — mic — send  (chatgpt-style)
+        input_container_layout.addWidget(self.attach_button)
+        input_container_layout.addWidget(self.user_input, 1)
         input_container_layout.addWidget(self.mic_button)
+        input_container_layout.addWidget(self.send_button)
 
         input_layout.addWidget(self.input_container)
 
@@ -2289,148 +2288,126 @@ class MainWindow(QWidget):
             QTimer.singleShot(700, self.return_to_idle)
 
     def _animate_widget_entrance(self, widget):
-        """Animate widget fading/sliding in (respects motion settings)."""
+        """Subtle fade/slide for new messages (respects reduced-motion)."""
         try:
             from settings import get_setting
-
             if not get_setting("appearance.show_message_animations", True):
                 return
-
         except Exception:
             pass
-
         try:
+            eff = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(eff)
             from PySide6.QtCore import QEasingCurve, QPropertyAnimation
-
-            widget.setWindowOpacity(0.0)
-            current_pos = widget.pos()
-            widget.move(current_pos.x(), current_pos.y() + 10)
-
-            opacity_anim = QPropertyAnimation(widget, b"windowOpacity")
-            opacity_anim.setDuration(300)
-            opacity_anim.setStartValue(0.0)
-            opacity_anim.setEndValue(1.0)
-            opacity_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-
-            pos_anim = QPropertyAnimation(widget, b"pos")
-            pos_anim.setDuration(300)
-            pos_anim.setStartValue(widget.pos())
-            pos_anim.setEndValue(current_pos)
-            pos_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-
-            opacity_anim.start()
-            pos_anim.start()
+            # Opacity animation
+            anim = QPropertyAnimation(eff, b"opacity")
+            anim.setDuration(280)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            # Keep reference to prevent GC
+            if not hasattr(self, "_entrance_anims"):
+                self._entrance_anims = []
+            self._entrance_anims.append(anim)
+            anim.finished.connect(lambda: self._entrance_anims.remove(anim) if anim in self._entrance_anims else None)
+            eff.setOpacity(0.0)
+            anim.start()
         except Exception:
             pass
 
+    def _wrap_centered_row(self, bubble_widget, align_right=False):
+        """Wrap bubble in a centered max-width container (ChatGPT-like column)."""
+        # Outer row centered within scroll viewport
+        outer = QWidget()
+        outer.setObjectName("MessageRow")
+        outer_layout = QHBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        # Center column — max 860px readable width
+        center = QWidget()
+        center.setMaximumWidth(860)
+        center.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        center_layout = QHBoxLayout(center)
+        center_layout.setContentsMargins(0, 2, 0, 2)
+        center_layout.setSpacing(0)
+
+        if align_right:
+            center_layout.addStretch()
+            center_layout.addWidget(bubble_widget)
+        else:
+            center_layout.addWidget(bubble_widget)
+            center_layout.addStretch()
+
+        outer_layout.addStretch()
+        outer_layout.addWidget(center)
+        outer_layout.addStretch()
+        return outer
+
     # ========================================================
-    # ADD USER MESSAGE
+    # ADD USER MESSAGE — POLISHED, COMPACT
     # ========================================================
 
-    def add_user_message(
-        self,
-        text,
-    ):
-
+    def add_user_message(self, text):
         self._update_empty_state()
-
         bubble = QLabel(str(text))
-
         bubble.setObjectName("UserBubble")
-
         bubble.setWordWrap(True)
-
         bubble.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-
-        # Keep the user reply comfortably wide without dominating the chat area.
-        chat_width = self.chat_area.width() if self.chat_area else 800
-        max_width = max(260, int(chat_width * 0.72))
-        bubble.setMaximumWidth(max_width)
-
+        # ChatGPT-like max width: comfortable but not full-screen
+        chat_width = self.chat_area.viewport().width() if self.chat_area else 800
+        max_w = min(560, max(240, int(chat_width * 0.62)))
+        bubble.setMaximumWidth(max_w)
         bubble.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-
-        # Animate entrance
         self._animate_widget_entrance(bubble)
-
-        row = QHBoxLayout()
-
-        row.setContentsMargins(0, 0, 0, 0)
-
-        row.addStretch()
-
-        row.addWidget(bubble)
-
-        self.message_layout.insertLayout(self.message_layout.count() - 1, row)
-
+        row_widget = self._wrap_centered_row(bubble, align_right=True)
+        self.message_layout.insertWidget(self.message_layout.count() - 1, row_widget)
         self.scroll_to_bottom()
 
     # ========================================================
-    # ADD AI MESSAGE (RICH MARKDOWN) - PRIMARY METHOD
+    # ADD AI MESSAGE (RICH MARKDOWN) — POLISHED
     # ========================================================
 
-    def add_ai_message_rich(
-        self,
-        text,
-        message_id=None,
-    ):
+    def add_ai_message_rich(self, text, message_id=None):
         """Add a Markdown-rendered AI message using QTextBrowser."""
-
         self._update_empty_state()
-
         browser = QTextBrowser()
         browser.setObjectName("AIBubble")
-
-        # Let AI responses feel spacious but still readable within the conversation area.
-        chat_width = self.chat_area.width() if self.chat_area else 800
-        max_width = max(360, int(chat_width * 0.82))
-        browser.setMaximumWidth(max_width)
+        chat_width = self.chat_area.viewport().width() if self.chat_area else 800
+        max_w = min(760, max(320, int(chat_width * 0.78)))
+        browser.setMaximumWidth(max_w)
         browser.setMinimumHeight(40)
-        browser.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        browser.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         browser.setOpenExternalLinks(True)
         browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         browser.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
-
-        # Style the QTextBrowser — compact, readable AI message
         browser.setStyleSheet(
             "QTextBrowser {"
-            "  background-color: #1E1E2A;"
-            "  border: 1px solid #2B2B3D;"
-            "  border-radius: 14px;"
-            "  padding: 8px 12px;"
+            "  background-color: #121218;"
+            "  border: 1px solid #242436;"
+            "  border-radius: 16px;"
+            "  border-bottom-left-radius: 6px;"
+            "  padding: 10px 14px;"
             "  font-size: 14px;"
-            "  color: white;"
+            "  line-height: 1.6;"
+            "  color: #E6E6F0;"
             "}"
         )
-
         html = markdown_to_html(str(text))
         browser.setHtml(html)
-
-        # Tighten the document's internal margins so markdown lists and
-        # paragraphs sit close to the bubble edges.
         try:
-            browser.document().setDocumentMargin(2)
-
-            browser.document().setIndentWidth(10)
-
+            browser.document().setDocumentMargin(4)
+            browser.document().setIndentWidth(12)
         except Exception:
             pass
-
-        # Adjust height after layout settles to avoid nested scrollbars
-        QTimer.singleShot(0, lambda: self._adjust_browser_height(browser, max_width))
-
-        # Store message data
+        QTimer.singleShot(0, lambda: self._adjust_browser_height(browser, max_w))
         if message_id:
             browser.setProperty("message_id", message_id)
         browser.setProperty("full_text", str(text))
-
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(browser)
-        row.addStretch()
-
-        self.message_layout.insertLayout(self.message_layout.count() - 1, row)
-
+        self._animate_widget_entrance(browser)
+        row_widget = self._wrap_centered_row(browser, align_right=False)
+        self.message_layout.insertWidget(self.message_layout.count() - 1, row_widget)
         self.scroll_to_bottom()
         return browser
 
@@ -2439,46 +2416,63 @@ class MainWindow(QWidget):
         try:
             doc = browser.document()
             actual_width = width or browser.maximumWidth() or 680
-            # setTextWidth doesn't immediately trigger a relayout, so clone
-            # the document to force a synchronous recalculation before measuring.
             doc.setTextWidth(actual_width)
             cloned = doc.clone()
             cloned.setTextWidth(actual_width)
-            height = int(cloned.size().height()) + 20
-            browser.setMinimumHeight(max(36, height))
+            height = int(cloned.size().height()) + 24
+            browser.setMinimumHeight(max(40, height))
             browser.setMaximumHeight(height)
+            # Ensure parent row also updates
+            try:
+                browser.updateGeometry()
+                if browser.parentWidget():
+                    browser.parentWidget().updateGeometry()
+            except Exception:
+                pass
         except Exception:
             pass
+
+    def _find_bubble_in_row(self, row_widget):
+        """Recursively find UserBubble/AIBubble inside centered wrapper."""
+        if row_widget is None:
+            return None
+        if row_widget.objectName() in ("UserBubble", "AIBubble"):
+            return row_widget
+        for child in row_widget.findChildren(QLabel):
+            if child.objectName() == "UserBubble":
+                return child
+        for child in row_widget.findChildren(QTextBrowser):
+            if child.objectName() == "AIBubble":
+                return child
+        return None
 
     def _reflow_messages(self):
         """Reflow all messages to fit the current chat area width."""
         if not self.chat_area or not self.message_layout:
             return
-
-        chat_width = self.chat_area.width()
+        chat_width = self.chat_area.viewport().width() if self.chat_area else 800
         if chat_width <= 0:
             return
-
-        # Update all user message bubbles
         for i in range(self.message_layout.count()):
             item = self.message_layout.itemAt(i)
-            if item and item.layout():
-                layout = item.layout()
-                for j in range(layout.count()):
-                    widget = layout.itemAt(j).widget()
-                    if widget and widget.objectName() == "UserBubble":
-                        max_width = max(260, int(chat_width * 0.72))
-                        widget.setMaximumWidth(max_width)
-                    elif widget and widget.objectName() == "AIBubble":
-                        max_width = max(360, int(chat_width * 0.82))
-                        widget.setMaximumWidth(max_width)
-                        # Re-adjust height with new width
-                        QTimer.singleShot(
-                            0,
-                            lambda b=widget, w=max_width: self._adjust_browser_height(
-                                b, w
-                            ),
-                        )
+            row_widget = item.widget() if item else None
+            if row_widget is None or row_widget.objectName() != "MessageRow":
+                continue
+            bubble = self._find_bubble_in_row(row_widget)
+            if bubble is None:
+                continue
+            if bubble.objectName() == "UserBubble":
+                max_w = min(560, max(240, int(chat_width * 0.62)))
+                bubble.setMaximumWidth(max_w)
+            elif bubble.objectName() == "AIBubble":
+                max_w = min(760, max(320, int(chat_width * 0.78)))
+                bubble.setMaximumWidth(max_w)
+                QTimer.singleShot(0, lambda b=bubble, w=max_w: self._adjust_browser_height(b, w))
+            # Update center wrapper max width
+            for child in row_widget.findChildren(QWidget):
+                if child.maximumWidth() == 860:
+                    # keep centered column max width stable at 860 — no change needed
+                    pass
 
     # ========================================================
     # ADD AI MESSAGE (PLAIN TEXT FALLBACK - delegates to rich)
@@ -2552,88 +2546,60 @@ class MainWindow(QWidget):
 
         container_layout.addWidget(image_label)
 
-        # Row layout
-        row = QHBoxLayout()
-
-        row.setContentsMargins(0, 0, 0, 0)
-
-        row.addWidget(container)
-
-        row.addStretch()
-
-        self.message_layout.insertLayout(self.message_layout.count() - 1, row)
-
+        # Use centered row wrapper
+        row_widget = self._wrap_centered_row(container, align_right=False)
+        self.message_layout.insertWidget(self.message_layout.count() - 1, row_widget)
         self.scroll_to_bottom()
 
     # ========================================================
-    # THINKING
+    # THINKING — integrated with centered column
     # ========================================================
 
-    def show_thinking(
-        self,
-    ):
-
+    def show_thinking(self):
         if self.thinking_label is not None:
             return
-
-        self.thinking_label = QLabel("Thinking")
-
+        self.thinking_label = QLabel("● Creating")
         self.thinking_label.setObjectName("Typing")
-
         self.thinking_label.setStyleSheet("""
             font-size: 12px;
             color: #8A8A99;
-            background-color: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.07);
+            background-color: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
             border-radius: 12px;
-            padding: 5px 14px;
+            padding: 6px 14px;
         """)
-
-        # Animated dots
         self.dots_label = QLabel("")
-
         try:
             accent = get_current_theme().get("accent", {})
-
-            dot_color = (
-                accent.get("default", "#00CC6A")
-                if isinstance(accent, dict)
-                else "#00CC6A"
-            )
-
+            dot_color = accent.get("default", "#00CC6A") if isinstance(accent, dict) else "#00CC6A"
         except Exception:
             dot_color = "#00CC6A"
-
-        self.dots_label.setStyleSheet(
-            f"font-size: 13px; color: {dot_color}; background: transparent;"
-        )
-
-        # Animate dots + subtle breathing opacity (respects reduced-motion setting)
+        self.dots_label.setStyleSheet(f"font-size: 13px; color: {dot_color}; background: transparent;")
         self.dot_animation_state = 0
         self.dot_timer = QTimer()
         self.dot_timer.timeout.connect(self._update_dots_animation)
-        self.dot_timer.start(500)  # 500ms per frame
-        # Breathing opacity for thinking label — lightweight Qt animation
+        self.dot_timer.start(480)
         try:
             if get_setting("appearance.show_message_animations", True):
                 eff = QGraphicsDropShadowEffect(self.thinking_label)
                 eff.setBlurRadius(0)
                 eff.setColor(QColor(0, 0, 0, 0))
                 self.thinking_label.setGraphicsEffect(eff)
-                self._thinking_opacity = QGraphicsDropShadowEffect
                 self._thinking_breath_dir = 1
                 self._thinking_breath_opacity = 0.55
         except Exception:
             pass
-
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self.thinking_label)
-        row.addWidget(self.dots_label)
-        row.addStretch()
-
-        self.message_layout.insertLayout(self.message_layout.count() - 1, row)
-
+        thinking_inner = QWidget()
+        thinking_layout = QHBoxLayout(thinking_inner)
+        thinking_layout.setContentsMargins(0, 0, 0, 0)
+        thinking_layout.setSpacing(6)
+        thinking_layout.addWidget(self.thinking_label)
+        thinking_layout.addWidget(self.dots_label)
+        thinking_layout.addStretch()
+        row_widget = self._wrap_centered_row(thinking_inner, align_right=False)
+        # Keep reference for removal
+        self._thinking_row_widget = row_widget
+        self.message_layout.insertWidget(self.message_layout.count() - 1, row_widget)
         self.scroll_to_bottom()
 
     def _update_dots_animation(self):
@@ -2669,31 +2635,39 @@ class MainWindow(QWidget):
     # REMOVE THINKING
     # ========================================================
 
-    def remove_thinking(
-        self,
-    ):
-
+    def remove_thinking(self):
         if self.thinking_label is None:
             return
-
         dot_timer = getattr(self, "dot_timer", None)
-
         if dot_timer is not None:
             try:
                 dot_timer.stop()
-
             except RuntimeError:
                 pass
-
             self.dot_timer = None
-
+        # Remove the whole centered row widget, not just label
+        row_widget = getattr(self, "_thinking_row_widget", None)
+        if row_widget is not None:
+            try:
+                self.message_layout.removeWidget(row_widget)
+                row_widget.setParent(None)
+                row_widget.deleteLater()
+            except Exception:
+                pass
+            self._thinking_row_widget = None
         try:
-            self.thinking_label.deleteLater()
-
+            if self.thinking_label is not None:
+                self.thinking_label.deleteLater()
         except RuntimeError:
             pass
-
         self.thinking_label = None
+        # Dots label was inside row widget, already deleted; clear refs
+        if hasattr(self, "dots_label"):
+            try:
+                self.dots_label.deleteLater()
+            except Exception:
+                pass
+            self.dots_label = None
 
     # ========================================================
     # IMAGE MESSAGE
@@ -2739,8 +2713,8 @@ class MainWindow(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(label)
         layout.setAlignment(label, Qt.AlignmentFlag.AlignLeft)
-
-        self.message_layout.insertWidget(self.message_layout.count() - 1, container)
+        row_widget = self._wrap_centered_row(container, align_right=False)
+        self.message_layout.insertWidget(self.message_layout.count() - 1, row_widget)
         self.scroll_to_bottom()
 
     # ========================================================
@@ -3070,59 +3044,58 @@ class MainWindow(QWidget):
     # ========================================================
 
     def _add_message_actions(self, browser):
-        """Add regenerate button below an AI message."""
+        """Small subtle regenerate action aligned within centered column."""
         if browser is None:
             return
-
-        # Create actions row
-        actions_row = QHBoxLayout()
-        actions_row.setContentsMargins(0, 0, 0, 0)
-        actions_row.setSpacing(6)
-
-        # Regenerate button
-        regen_btn = QPushButton("🔄 Regenerate")
-        regen_btn.setFixedHeight(28)
+        # Find the MessageRow that contains this browser
+        row_widget = None
+        for i in range(self.message_layout.count()):
+            item = self.message_layout.itemAt(i)
+            w = item.widget() if item else None
+            if w is not None and w.objectName() == "MessageRow":
+                found = self._find_bubble_in_row(w)
+                if found is browser:
+                    row_widget = w
+                    row_index = i
+                    break
+        if row_widget is None:
+            return
+        regen_btn = QPushButton("↻ Regenerate")
+        regen_btn.setFixedHeight(26)
         regen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        regen_btn.setToolTip("Regenerate response")
         regen_btn.setStyleSheet(
             "QPushButton {"
-            "  background-color: transparent;"
-            "  border: 1px solid #3A3A50;"
-            "  border-radius: 10px;"
-            "  padding: 4px 12px;"
-            "  color: #A0A0B5;"
+            "  background: transparent;"
+            "  border: 1px solid rgba(255,255,255,0.08);"
+            "  border-radius: 12px;"
+            "  padding: 3px 10px;"
+            "  color: #6B6B80;"
             "  font-size: 11px;"
             "}"
             "QPushButton:hover {"
-            "  background-color: #153015;"
-            "  color: #E6FFEC;"
-            "  border-color: #00FF88;"
+            "  background: rgba(0,255,136,0.08);"
+            "  color: #A0FFCC;"
+            "  border-color: rgba(0,255,136,0.22);"
             "}"
         )
         user_msg = browser.property("user_message") or ""
-        regen_btn.clicked.connect(
-            lambda checked, msg=user_msg: self.regenerate_response(msg)
-        )
-
-        actions_row.addWidget(regen_btn)
-        actions_row.addStretch()
-
-        # Insert after the browser's parent row
-        parent_layout = browser.parent().layout() if browser.parent() else None
-        if parent_layout:
-            # Find the index of the browser's row
-            for i in range(self.message_layout.count()):
-                item = self.message_layout.itemAt(i)
-                if (
-                    item
-                    and item.layout()
-                    and self._layout_contains(item.layout(), browser)
-                ):
-                    self.message_layout.insertLayout(i + 1, actions_row)
-                    break
-        else:
-            self.message_layout.insertLayout(
-                self.message_layout.count() - 1, actions_row
-            )
+        regen_btn.clicked.connect(lambda checked, msg=user_msg: self.regenerate_response(msg))
+        # Wrap button in centered row similar to messages
+        btn_center = QWidget()
+        btn_center.setMaximumWidth(860)
+        btn_layout = QHBoxLayout(btn_center)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.addWidget(regen_btn)
+        btn_layout.addStretch()
+        outer = QWidget()
+        outer.setObjectName("MessageRowAction")
+        outer_layout = QHBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 2, 0, 2)
+        outer_layout.addStretch()
+        outer_layout.addWidget(btn_center)
+        outer_layout.addStretch()
+        self.message_layout.insertWidget(row_index + 1, outer)
 
     def _layout_contains(self, layout, widget):
         """Check if a layout contains a specific widget."""
@@ -3758,49 +3731,93 @@ class MainWindow(QWidget):
             chat["title"] = title
 
     # ========================================================
-    # SCROLL
+    # SCROLL — CHAT IS ONLY SCROLLABLE AREA
     # ========================================================
 
-    def scroll_to_bottom(
-        self,
-    ):
+    def _is_near_bottom(self, threshold=120):
+        """Check if user is near bottom (don't force scroll if reading history)."""
+        sb = self.chat_area.verticalScrollBar()
+        return (sb.maximum() - sb.value()) <= threshold
 
-        QTimer.singleShot(50, self._scroll_to_bottom_now)
+    def _on_chat_scroll(self, value):
+        """Show/hide floating scroll button based on position."""
+        try:
+            sb = self.chat_area.verticalScrollBar()
+            near_bottom = (sb.maximum() - value) <= 120
+            self._auto_scroll_enabled = near_bottom
+            if hasattr(self, "_scroll_down_btn") and self._scroll_down_btn is not None:
+                if near_bottom:
+                    self._scroll_down_btn.hide()
+                else:
+                    # Only show if there are messages
+                    has_msgs = self.message_layout.count() > 1
+                    if has_msgs:
+                        self._scroll_down_btn.show()
+                        self._scroll_down_btn.raise_()
+                    else:
+                        self._scroll_down_btn.hide()
+                self._position_scroll_btn()
+        except Exception:
+            pass
 
-    def _scroll_to_bottom_now(
-        self,
-    ):
+    def _position_scroll_btn(self):
+        """Position floating scroll button bottom-center above composer."""
+        try:
+            if not hasattr(self, "_scroll_down_btn") or self._scroll_down_btn is None:
+                return
+            vp = self.chat_area.viewport()
+            btn = self._scroll_down_btn
+            x = (vp.width() - btn.width()) // 2
+            y = vp.height() - btn.height() - 12
+            btn.move(x, y)
+        except Exception:
+            pass
 
+    def scroll_to_bottom(self, force=False):
+        """Smart scroll — only auto-scroll if near bottom, unless forced."""
+        if not force and not getattr(self, "_auto_scroll_enabled", True):
+            # User is reading history — don't yank them down; show button instead
+            try:
+                if hasattr(self, "_scroll_down_btn"):
+                    self._scroll_down_btn.show()
+                    self._scroll_down_btn.raise_()
+                    self._position_scroll_btn()
+            except Exception:
+                pass
+            return
+        QTimer.singleShot(30, self._scroll_to_bottom_now)
+
+    def _scroll_to_bottom_now(self):
         scrollbar = self.chat_area.verticalScrollBar()
-
         scrollbar.setValue(scrollbar.maximum())
-
-        # Bubble heights settle asynchronously (QTextBrowser sizing), which
-        # shifts the scroll range right after this call. Re-pin for a short
-        # window so the newest message stays fully visible.
-        self._repin_budget = 8
-
+        self._position_scroll_btn()
+        # Re-pin while bubble heights settle, but respect user intent
+        self._repin_budget = 6
+        try:
+            scrollbar.rangeChanged.disconnect(self._repin_scroll)
+        except Exception:
+            pass
         scrollbar.rangeChanged.connect(self._repin_scroll)
 
-    def _repin_scroll(
-        self,
-    ):
-        """Briefly follow the growing conversation after new messages."""
-
+    def _repin_scroll(self):
+        """Briefly follow growing conversation if still near bottom."""
         if self._repin_budget <= 0:
             try:
-                self.chat_area.verticalScrollBar().rangeChanged.disconnect(
-                    self._repin_scroll
-                )
+                self.chat_area.verticalScrollBar().rangeChanged.disconnect(self._repin_scroll)
             except (RuntimeError, TypeError):
                 pass
             return
-
         self._repin_budget -= 1
-
+        if not self._is_near_bottom(threshold=160):
+            # User scrolled away — stop repinning
+            try:
+                self.chat_area.verticalScrollBar().rangeChanged.disconnect(self._repin_scroll)
+            except Exception:
+                pass
+            return
         scrollbar = self.chat_area.verticalScrollBar()
-
         scrollbar.setValue(scrollbar.maximum())
+        self._position_scroll_btn()
 
     # ========================================================
     # CHARACTER POSITION
@@ -4042,21 +4059,20 @@ class MainWindow(QWidget):
 
         self.position_character()
 
-    def resizeEvent(
-        self,
-        event,
-    ):
-
+    def resizeEvent(self, event):
         super().resizeEvent(event)
-
-        # Resize neural canvas
         if self.neural_canvas:
             self.neural_canvas.setGeometry(self.rect())
-
         self.position_character()
-
-        # Reflow messages to fit new width
-        QTimer.singleShot(100, self._reflow_messages)
+        QTimer.singleShot(80, self._reflow_messages)
+        QTimer.singleShot(80, self._position_scroll_btn)
+        # Update empty state centering on resize
+        try:
+            empty = getattr(self, "empty_state", None)
+            if empty is not None and empty.isVisible():
+                QTimer.singleShot(80, lambda: self._center_empty_state(empty))
+        except Exception:
+            pass
 
     # ========================================================
     # CLOSE

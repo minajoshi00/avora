@@ -1630,7 +1630,9 @@ WEBSITE_ALIASES = {
     "perplexity": "https://www.perplexity.ai",
     "deepseek": "https://chat.deepseek.com",
     "youtube": "https://www.youtube.com",
+    "yt": "https://www.youtube.com",
     "youtube music": "https://music.youtube.com",
+    "yt music": "https://music.youtube.com",
     "netflix": "https://www.netflix.com",
     "prime video": "https://www.primevideo.com",
     "disney plus": "https://www.disneyplus.com",
@@ -1639,7 +1641,10 @@ WEBSITE_ALIASES = {
     "soundcloud": "https://soundcloud.com",
     "crunchyroll": "https://www.crunchyroll.com",
     "facebook": "https://www.facebook.com",
+    "fb": "https://www.facebook.com",
     "instagram": "https://www.instagram.com",
+    "insta": "https://www.instagram.com",
+    "ig": "https://www.instagram.com",
     "twitter": "https://x.com",
     "x": "https://x.com",
     "tiktok": "https://www.tiktok.com",
@@ -1681,29 +1686,95 @@ WEBSITE_ALIASES = {
     "riot games": "https://www.riotgames.com",
 }
 
+# Short alias reverse map for fuzzy matching (insta -> instagram, etc.)
+_WEBSITE_FUZZY = {
+    "insta": "instagram",
+    "ig": "instagram",
+    "fb": "facebook",
+    "yt": "youtube",
+    "gh": "github",
+    "so": "stackoverflow",
+    "gmaps": "google maps",
+    "gdrive": "google drive",
+    "gdocs": "google docs",
+}
+
+# Known folder aliases -> actual path resolution
+_KNOWN_FOLDERS = {
+    "downloads": "Downloads",
+    "download": "Downloads",
+    "documents": "Documents",
+    "docs": "Documents",
+    "desktop": "Desktop",
+    "pictures": "Pictures",
+    "images": "Pictures",
+    "videos": "Videos",
+    "music": "Music",
+    "home": "",
+}
+
+# Window settings keywords hint for quick detection
+_SETTINGS_HINTS = ["settings", "display", "sound", "audio", "bluetooth", "wifi", "network", "personalization", "privacy", "update", "battery", "power", "storage", "system", "accounts", "apps", "control panel"]
+
+
+def _resolve_website_url(target: str) -> str | None:
+    """Fuzzy website resolver: handles insta->instagram, yt->youtube, etc."""
+    t = str(target or "").strip().lower()
+    if not t:
+        return None
+    # exact alias
+    if t in WEBSITE_ALIASES:
+        return WEBSITE_ALIASES[t]
+    # fuzzy short alias
+    if t in _WEBSITE_FUZZY:
+        canonical = _WEBSITE_FUZZY[t]
+        if canonical in WEBSITE_ALIASES:
+            return WEBSITE_ALIASES[canonical]
+    # substring/fuzzy: e.g. 'insta' inside 'instagram' already handled, but try contains
+    for alias, url in WEBSITE_ALIASES.items():
+        if t == alias.replace(" ", ""):
+            return url
+        # e.g. user says "insta" -> alias "instagram" contains t at start
+        if alias.startswith(t) or t.startswith(alias):
+            # only if the short string is >=3 chars to avoid false positives
+            if len(t) >= 3 and len(alias) >= 3:
+                return url
+    # direct URL
+    if t.startswith(("http://", "https://")):
+        return t
+    # treat dot as URL only if not a document/file path (avoid xyzabc.pdf -> https)
+    _DOC_EXTS = (".pdf",".docx",".doc",".txt",".pptx",".xlsx",".png",".jpg",".jpeg",".zip",".exe")
+    if "." in t and " " not in t and not t.endswith(_DOC_EXTS):
+        # limit to plausible domain patterns (contains dot but not file path separators)
+        if "/" not in t and "\\" not in t:
+            return f"https://{t}"
+    # last: try matching word inside target like "open instagram" - require word boundary and len>=3 to avoid 'x' false positive
+    for alias, url in WEBSITE_ALIASES.items():
+        if len(alias) < 3:
+            continue
+        # check as whole word or substring with word boundary
+        if re.search(rf"\b{re.escape(alias)}\b", t):
+            return url
+        # also check alias without spaces inside t as whole phrase
+        if alias.replace(" ", "") in t.replace(" ", "") and len(alias.replace(" ","")) >= 3:
+            # ensure not false like 'x' in 'xyzabc'
+            if alias not in ("x",):
+                # For cases like "open instagram" where t is "instagram", alias is "instagram" we already handled exact, but for "open instagram discussion" still match
+                if t == alias or alias in t.split():
+                    return url
+    return None
+
 
 def open_website(url_or_name: str) -> bool:
     """Open a website by alias or direct URL in the default browser."""
-    target = str(url_or_name or "").strip().lower()
-    if not target:
+    url = _resolve_website_url(url_or_name)
+    if not url:
         return False
-
-    url = WEBSITE_ALIASES.get(target)
-
-    if url is None:
-        if target.startswith(("http://", "https://")):
-            url = target
-        elif "." in target and " " not in target:
-            url = f"https://{target}"
-        else:
-            return False
-
     try:
         import webbrowser
-
         webbrowser.open(url)
+        print(f"[AVORA] EXECUTING: open website -> {url}")
         return True
-
     except Exception as error:
         print("[Website Open Error]", error)
         return False
@@ -1714,17 +1785,604 @@ def search_google(query: str) -> bool:
     query = str(query or "").strip()
     if not query:
         return False
-
     try:
         import webbrowser
         from urllib.parse import quote_plus
-
         webbrowser.open(f"https://www.google.com/search?q={quote_plus(query)}")
+        print(f"[AVORA] EXECUTING: google search -> {query}")
         return True
-
     except Exception as error:
         print("[Google Search Error]", error)
         return False
+
+
+def search_youtube(query: str) -> bool:
+    """Search YouTube for the given query."""
+    query = str(query or "").strip()
+    if not query:
+        return False
+    try:
+        import webbrowser
+        from urllib.parse import quote_plus
+        webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
+        print(f"[AVORA] EXECUTING: youtube search -> {query}")
+        return True
+    except Exception as error:
+        print("[YouTube Search Error]", error)
+        return False
+
+
+# ============================================================
+# NATURAL LANGUAGE ACTION EXECUTION PIPELINE (MASTER FIX)
+# ============================================================
+# This is the core real-world execution repair.
+# Previously: regex only matched strict 'open X' -> many natural
+# requests fell through to LLM which hallucinated confirmation.
+# Now: robust extraction of intent+target from any phrasing.
+
+from dataclasses import dataclass, field as _dc_field
+
+@dataclass
+class AvoraActionPlan:
+    intent: str  # open/search/launch
+    target: str
+    target_type: str  # application|website|folder|file|document|system_setting|search
+    parameters: dict = _dc_field(default_factory=dict)
+    steps: list = _dc_field(default_factory=list)
+    requires_verification: bool = True
+
+@dataclass
+class AvoraActionResult:
+    success: bool
+    action: str
+    target: str
+    target_type: str
+    details: str = ""
+    verified: bool = False
+    error: str = ""
+
+# Filler words that humans add before/after commands
+_FILLER_RE = re.compile(r"\b(?:bro|brooo|bruh|yo|hey|hi|hello|please|pls|plz|kindly|can you|could you|would you|will you|can u|could u|would u|for me|my|the|a|an|just|now|pls+)\b", re.IGNORECASE)
+_VERB_RE = re.compile(r"\b(open|launch|start|run|execute|go to|take me to|bring up|show|show me|navigate to|visit|search|find|look up)\b", re.IGNORECASE)
+_TAKE_ME_RE = re.compile(r"\b(?:take me to|go to|navigate to|bring up|show me|show|visit)\b", re.IGNORECASE)
+
+def _clean_filler(text: str) -> str:
+    t = str(text or "").strip()
+    # keep original for target extraction but also produce cleaned version
+    # Remove filler words only at edges, keep internal target intact
+    # Example: "bro open insta pls" -> "open insta"
+    lower = t.lower()
+    # Strip leading filler + polite prefixes
+    lower = re.sub(r"^\s*(?:bro+|bruh|yo|hey|hi|hello|please|pls|kindly|ok|okay|yeah|yup)[\s,]*", "", lower)
+    lower = re.sub(r"^\s*(?:can you|could you|would you|will you|can u|could u|would u|please)\s+", "", lower)
+    lower = re.sub(r"\s+(?:please|pls|plz|bro+|for me|thanks|thank you)\s*$", "", lower)
+    return lower.strip()
+
+def _strip_action_verb(cleaned: str) -> tuple[str, str]:
+    """Return (verb, remainder_target)."""
+    if not cleaned:
+        return ("", "")
+    m = re.search(r"^(open|launch|start|run|execute|go to|take me to|bring up|show me|show|navigate to|visit|search|find|look up)\s+", cleaned)
+    if m:
+        verb = m.group(1).lower().replace("take me to","open").replace("go to","open").replace("navigate to","open").replace("visit","open").replace("show me","open").replace("show","open").replace("bring up","open")
+        target = cleaned[m.end():].strip()
+        # also handle "open X and search Y" pattern kept separate by caller
+        return (verb if verb else "open", target)
+    # handle "can you bring up chrome" already cleaned -> but if no verb prefix, try find verb inside
+    m2 = re.search(r"\b(open|launch|start|run|execute|go to|take me to|bring up|show me|show|navigate to|visit)\b\s+(.+)$", cleaned)
+    if m2:
+        verb = m2.group(1).lower().replace("take me to","open").replace("go to","open")
+        target = m2.group(2).strip()
+        return (verb, target)
+    return ("open", cleaned)
+
+def _infer_target_type(raw_target: str, verb: str) -> str:
+    t = raw_target.lower().strip()
+    # direct checks
+    if not t:
+        return "unknown"
+    # PRIORITY 1: Known folders bare names must win over settings (e.g. "desktop" -> folder not display setting)
+    # Check this BEFORE settings lookup to avoid false classification
+    norm_folder = t.replace("my ", "").replace("the ", "").replace(" folder","").replace(" directory","").strip()
+    if norm_folder in _KNOWN_FOLDERS:
+        return "folder"
+    if any(norm_folder == key or norm_folder == f"{key} folder" or key in norm_folder and "settings" not in norm_folder for key in _KNOWN_FOLDERS):
+        # e.g. "downloads", "my downloads", "downloads folder" -> folder
+        # but ensure not "display settings"
+        if norm_folder in _KNOWN_FOLDERS or f"{norm_folder} folder" in [f"{k} folder" for k in _KNOWN_FOLDERS] or norm_folder in ["downloads","desktop","documents","pictures","videos","music","home"]:
+            return "folder"
+    # search intent detection: if phrase contains 'search' or verb is search/find
+    if verb in ("search", "find") or "search" in t or "look up" in t:
+        return "search"
+    # website detection
+    if _resolve_website_url(t):
+        return "website"
+    # Check if target mentions a known website without verb - use word boundary to avoid 'x' in 'xyzabc'
+    for alias in WEBSITE_ALIASES:
+        if len(alias) < 3:
+            continue
+        if re.search(rf"\b{re.escape(alias)}\b", t):
+            return "website"
+    # Settings detection via windows_settings database (only after folder check)
+    try:
+        from skills.windows_settings import search_capabilities
+        # Only consider high score matches as settings
+        # Require "settings" keyword to avoid false positives like desktop->remotedesktop
+        if "settings" in t or "control panel" in t or any(kw in t for kw in ["display settings","sound settings","bluetooth","wifi","network","personalization","privacy","update","storage","battery","power","system settings","accounts","apps"]):
+            hits = search_capabilities(t, limit=1)
+            if hits and hits[0].get("score", 0) >= 40:
+                # Ensure it's really a settings phrase, not just generic word
+                if any(kw in t for kw in ["settings","display","sound","bluetooth","wifi","network","personalization","privacy","update","storage","battery","power","system","accounts","apps","control panel","task manager","device manager"]):
+                    return "system_setting"
+                # also if raw is like "display settings" -> strong match
+                alias = hits[0].get("matched_alias","").lower()
+                if alias and (alias in t or t in alias):
+                    return "system_setting"
+    except Exception:
+        pass
+    # Folder detection - dynamic known folders
+    norm = t.replace("my ", "").replace("the ", "").strip()
+    # check exact folder names like 'downloads', 'documents', 'desktop', 'pictures'
+    for key in _KNOWN_FOLDERS:
+        if key in norm:
+            # e.g. "open downloads folder" -> folder
+            # need to ensure no file extension and not app name
+            if "folder" in norm or "directory" in norm or norm == key or f"{key} folder" in norm:
+                return "folder"
+            # bare "downloads" is folder by default, not website
+            if norm in (key, f"my {key}", f"the {key}"):
+                return "folder"
+    # check actual filesystem paths for folders
+    candidate_paths = [
+        Path.home() / "Downloads",
+        Path.home() / "Documents",
+        Path.home() / "Desktop",
+        Path.home() / "Pictures",
+        Path.home() / "Videos",
+        Path.home() / "Music",
+        Path.home(),
+        Path.cwd(),
+    ]
+    # If target contains folder-like wording or path
+    if any(w in t for w in ["folder","directory","desktop","downloads","documents"]):
+        return "folder"
+    # File/document detection
+    if any(t.endswith(ext) for ext in [".pdf",".docx",".doc",".txt",".pptx",".xlsx",".png",".jpg",".jpeg"]):
+        return "document"
+    if "pdf" in t or "document" in t or "presentation" in t or "word" in t or "excel" in t:
+        return "document"
+    # Default: application
+    return "application"
+
+def _resolve_folder_path(target: str) -> Path | None:
+    """Resolve natural language folder target to real Path."""
+    norm = _clean_filler(target).lower().replace("folder","").replace("directory","").replace("my ","").replace("the ","").strip()
+    norm = re.sub(r"\s+", " ", norm)
+    # Map friendly names
+    for key, folder_name in _KNOWN_FOLDERS.items():
+        if key in norm:
+            if key == "home" or folder_name == "":
+                return Path.home()
+            # Try OneDrive variant first if exists
+            base = Path.home()
+            candidate = base / folder_name
+            # Common OneDrive locations on Windows
+            if norm and not candidate.exists():
+                od = base / "OneDrive" / folder_name
+                if od.exists():
+                    return od
+            return candidate
+    # "avora folder" / "project folder" -> try cwd, home, known project dirs
+    if "avora" in norm:
+        # Try current project dir, home/avora, cwd
+        for cand in [Path.cwd(), Path.cwd().parent, Path.home() / "Desktop" / "avora", Path.home() / "avora", Path("C:/Users")]:
+            try:
+                if (cand / "avora").exists():
+                    return cand / "avora"
+                if cand.name.lower() == "avora" and cand.exists():
+                    return cand
+            except Exception:
+                continue
+        # generic: search Downloads/Documents for folder containing avora
+        for base in [Path.home() / "Desktop", Path.home() / "Documents", Path.home()]:
+            try:
+                for child in base.iterdir():
+                    if child.is_dir() and "avora" in child.name.lower():
+                        return child
+            except Exception:
+                continue
+    # Fallback: try as absolute path
+    try:
+        p = Path(str(target).strip())
+        if p.is_absolute() and p.exists():
+            return p
+        # try expanding ~/Downloads etc
+        exp = Path(os.path.expanduser(os.path.expandvars(str(target).strip())))
+        if exp.exists():
+            return exp
+    except Exception:
+        pass
+    return None
+
+def _open_folder_real(path: Path) -> AvoraActionResult:
+    try:
+        if not path.exists():
+            return AvoraActionResult(False, "open", str(path), "folder", verified=False, error=f"Folder not found: {path}")
+        ok = _open_path(str(path))
+        if ok:
+            return AvoraActionResult(True, "open", str(path), "folder", details=f"Opened {path}", verified=True)
+        # fallback via explorer
+        try:
+            subprocess.Popen(["explorer", str(path)], shell=False)
+            return AvoraActionResult(True, "open", str(path), "folder", details=f"Opened {path} via explorer", verified=True)
+        except Exception as e:
+            return AvoraActionResult(False, "open", str(path), "folder", verified=False, error=str(e))
+    except Exception as e:
+        return AvoraActionResult(False, "open", str(path), "folder", verified=False, error=str(e))
+
+def _open_settings_real(target: str) -> AvoraActionResult:
+    try:
+        from skills.windows_settings import find_capability, open_windows_uri, open_windows_command
+        cap = find_capability(target)
+        if not cap:
+            return AvoraActionResult(False, "open", target, "system_setting", verified=False, error=f"No setting found for '{target}'")
+        data = cap.get("data", {})
+        uri = data.get("uri")
+        cmd = data.get("command")
+        action = data.get("action")
+        if uri:
+            res = open_windows_uri(uri)
+            ok = bool(res.get("success"))
+            return AvoraActionResult(ok, "open", target, "system_setting", details=res.get("message",""), verified=ok, error="" if ok else res.get("message",""))
+        if cmd:
+            res = open_windows_command(cmd)
+            ok = bool(res.get("success"))
+            return AvoraActionResult(ok, "open", target, "system_setting", details=res.get("message",""), verified=ok, error="" if ok else res.get("message",""))
+        if action:
+            # power actions require confirmation - report safely
+            return AvoraActionResult(False, "open", target, "system_setting", verified=False, error=f"Action '{action}' requires confirmation")
+        return AvoraActionResult(False, "open", target, "system_setting", verified=False, error="No executable for setting")
+    except Exception as e:
+        return AvoraActionResult(False, "open", target, "system_setting", verified=False, error=str(e))
+
+def _open_document_real(target: str) -> AvoraActionResult:
+    """Find and open a document (PDF/DOCX etc) best-effort."""
+    try:
+        # If target is an existing path
+        candidates = []
+        # Try absolute/path-like
+        for base in [Path.home() / "Downloads", Path.home() / "Documents", Path.home() / "Desktop", Path.cwd(), Path.home()]:
+            try:
+                if base.exists():
+                    for ext in [".pdf",".docx",".doc",".txt",".pptx",".xlsx"]:
+                        # search for files containing keywords from target
+                        kw = re.sub(r"\b(open|my|the|a|document|pdf|file)\b","", target.lower()).strip()
+                        words = [w for w in kw.split() if len(w) >= 3]
+                        for f in base.glob(f"*{ext}"):
+                            if not words or any(w in f.name.lower() for w in words):
+                                candidates.append(f)
+                        # one level deep
+                        for sub in base.glob(f"*/*{ext}"):
+                            if sub.is_file() and (not words or any(w in sub.name.lower() for w in words)):
+                                candidates.append(sub)
+            except Exception:
+                continue
+        if candidates:
+            best = candidates[0]
+            ok = _open_path(str(best))
+            return AvoraActionResult(bool(ok), "open", target, "document", details=f"Opened {best}", verified=bool(ok), error="" if ok else "Failed to open file")
+        # fallback try direct file open via skills/files
+        try:
+            from skills.files import open_file as files_open
+            msg = files_open(target)
+            # skills/files returns success string if opened, check not failure
+            if msg and "couldn't" not in msg.lower() and "not found" not in msg.lower():
+                return AvoraActionResult(True, "open", target, "document", details=msg, verified=True)
+            return AvoraActionResult(False, "open", target, "document", verified=False, error=msg or "Document not found")
+        except Exception as e:
+            return AvoraActionResult(False, "open", target, "document", verified=False, error=str(e))
+    except Exception as e:
+        return AvoraActionResult(False, "open", target, "document", verified=False, error=str(e))
+
+def _execute_application(target: str) -> AvoraActionResult:
+    """Robust application launch with fallbacks."""
+    norm = _clean_filler(target).lower().strip()
+    # Use launcher_engine if available
+    try:
+        from launcher_engine import get_launcher_engine
+        eng = get_launcher_engine()
+        results = eng.search_apps(norm, limit=5)
+        if results:
+            best = results[0]
+            # Require decent relevance score, avoid gibberish launching random app
+            score = best.get("_score", best.get("score", 100))
+            if score >= 30:
+                path = best.get("path","")
+                name = best.get("name", norm)
+                if path and Path(path).exists():
+                    ok = eng.launch_app(path, name)
+                    if ok:
+                        return AvoraActionResult(True, "open", target, "application", details=f"Launched {name} via launcher_engine", verified=True)
+                # try launching by path even if not exists check
+                if path:
+                    try:
+                        subprocess.Popen([path], shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if os.name=="nt" else 0)
+                        return AvoraActionResult(True, "open", target, "application", details=f"Launched {name}", verified=True)
+                    except Exception:
+                        pass
+            else:
+                print(f"[AVORA] launcher_engine low score {score} for {norm}, skipping")
+    except Exception as e:
+        print(f"[AVORA] launcher_engine fallback error: {e}")
+    # Fallback to legacy find_installed_application / open_application
+    try:
+        found = find_installed_application(norm)
+        if found:
+            ok = open_application(norm)
+            if ok:
+                return AvoraActionResult(True, "open", target, "application", details=f"Launched {norm}", verified=True)
+            # direct open path
+            if os.path.exists(found):
+                ok2 = _open_path(found)
+                return AvoraActionResult(bool(ok2), "open", target, "application", details=f"Opened {found}", verified=bool(ok2), error="" if ok2 else "Launch failed")
+        # last resort: try shutil.which
+        wh = shutil.which(norm)
+        if wh:
+            try:
+                subprocess.Popen([wh], shell=False)
+                return AvoraActionResult(True, "open", target, "application", details=f"Launched {wh}", verified=True)
+            except Exception as e:
+                return AvoraActionResult(False, "open", target, "application", verified=False, error=str(e))
+        # also try APP_ALIASES mapping
+        aliased = APP_ALIASES.get(norm) or APP_ALIASES.get(norm.replace(" ",""))
+        if aliased:
+            wh2 = shutil.which(aliased)
+            if wh2:
+                try:
+                    subprocess.Popen([wh2], shell=False)
+                    return AvoraActionResult(True, "open", target, "application", details=f"Launched {aliased}", verified=True)
+                except Exception as e:
+                    return AvoraActionResult(False, "open", target, "application", verified=False, error=str(e))
+    except Exception as e:
+        return AvoraActionResult(False, "open", target, "application", verified=False, error=str(e))
+    return AvoraActionResult(False, "open", target, "application", verified=False, error=f"Application '{target}' not found")
+
+def _open_default_browser() -> bool:
+    """Open the user's actual default browser without assuming Chrome/Edge."""
+    # Try registry-based default browser detection, but always fall back to webbrowser which uses OS association
+    try:
+        import webbrowser
+        # about:blank opens default browser to blank page, no fake google
+        webbrowser.open("about:blank")
+        print("[AVORA] EXECUTING: open default browser -> about:blank")
+        return True
+    except Exception as e:
+        print(f"[Default Browser Error] {e}")
+        try:
+            # Fallback via os.startfile with http protocol
+            if IS_WINDOWS:
+                os.startfile("http://")
+                return True
+        except Exception as e2:
+            print(f"[Default Browser Fallback Error] {e2}")
+        return False
+
+def _execute_website(target: str) -> AvoraActionResult:
+    url = _resolve_website_url(target)
+    if not url:
+        return AvoraActionResult(False, "open", target, "website", verified=False, error=f"Unknown website '{target}'")
+    ok = open_website(target)  # uses new resolver
+    return AvoraActionResult(bool(ok), "open", target, "website", details=f"Opened {url}", verified=bool(ok), error="" if ok else "Browser launch failed")
+
+def _execute_search(target: str, raw_text: str) -> AvoraActionResult:
+    """Execute search: google/youtube generic. Detects YouTube-specific search."""
+    lower = (raw_text or target).lower()
+    # Extract query from various patterns
+    query = target
+    # patterns like "search google for Minecraft", "search for Minecraft on youtube", "find Minecraft videos on YouTube"
+    m = re.search(r"search\s+(?:on\s+)?(?:google|youtube|web)?\s*for\s+(.+)", lower)
+    if m:
+        query = m.group(1).strip()
+    else:
+        m2 = re.search(r"search\s+(?:google\s+for|youtube\s+for|for)?\s*(.+)", lower)
+        if m2:
+            # avoid capturing empty
+            cand = m2.group(1).strip()
+            if cand and cand not in ("google","youtube","the web"):
+                query = cand
+        else:
+            m3 = re.search(r"(?:google|youtube|web)\s+(?:for\s+)?(.+)", lower)
+            if m3 and ("search" in lower or "find" in lower):
+                query = m3.group(1).strip()
+    # clean filler from query
+    query = re.sub(r"^(?:for|on|the)\s+", "", query).strip()
+    query = _clean_filler(query)
+    if not query or query in ("google","youtube","web","the web"):
+        query = target
+    # choose engine
+    if "youtube" in lower or "yt" in lower.split() or "video" in lower:
+        ok = search_youtube(query)
+        return AvoraActionResult(bool(ok), "search", query, "search", details=f"YouTube search: {query}", verified=bool(ok), error="" if ok else "Search failed")
+    else:
+        ok = search_google(query)
+        return AvoraActionResult(bool(ok), "search", query, "search", details=f"Google search: {query}", verified=bool(ok), error="" if ok else "Search failed")
+
+def _single_action_to_result(raw: str) -> AvoraActionResult:
+    """Convert a single natural instruction to execution."""
+    cleaned = _clean_filler(raw)
+    verb, target = _strip_action_verb(cleaned)
+    if not target:
+        # could be like "search Minecraft"
+        verb, target = _strip_action_verb(raw.lower().strip())
+        if not target:
+            return AvoraActionResult(False, verb or "open", raw, "unknown", verified=False, error="No target detected")
+    # detect search even if verb is open but target contains search phrase
+    lower_raw = raw.lower()
+    if verb in ("search","find") or "search for" in lower_raw or "search google" in lower_raw or "look up" in lower_raw or ("search" in lower_raw and "youtube" in lower_raw):
+        ttype = "search"
+    else:
+        ttype = _infer_target_type(target, verb)
+    print(f"[AVORA] USER REQUEST: \"{raw}\" | VERB={verb} TARGET=\"{target}\" TYPE={ttype}")
+    # special: generic browser request -> open default browser dynamically, not fake google
+    if "browser" in target.lower():
+        ok = _open_default_browser()
+        return AvoraActionResult(bool(ok), "open", "browser", "website", details="Opened default browser" if ok else "Failed to open default browser", verified=bool(ok), error="" if ok else "Browser launch failed")
+    # dispatch
+    if ttype == "website":
+        return _execute_website(target)
+    elif ttype == "folder":
+        path = _resolve_folder_path(target)
+        if path:
+            return _open_folder_real(path)
+        # fallback try generic folder open
+        return AvoraActionResult(False, "open", target, "folder", verified=False, error=f"Could not resolve folder '{target}'")
+    elif ttype == "system_setting":
+        return _open_settings_real(target)
+    elif ttype == "search":
+        return _execute_search(target, raw)
+    elif ttype == "document":
+        return _open_document_real(target)
+    elif ttype == "application":
+        # but also try website fallback if application not found and target looks like website
+        res = _execute_application(target)
+        if not res.success and _resolve_website_url(target):
+            # retry as website
+            alt = _execute_website(target)
+            if alt.success:
+                return alt
+        return res
+    else:
+        # unknown -> try application then website then folder
+        for fn, typ in [(_execute_application,"application"), (_execute_website,"website")]:
+            r = fn(target)
+            if r.success:
+                return r
+        return AvoraActionResult(False, "open", target, "unknown", verified=False, error=f"Could not determine how to handle '{target}'")
+
+def _split_multi_step(text: str) -> list[str]:
+    """Split compound requests like 'Open Chrome and search for Python tutorials'."""
+    lower = text.lower()
+    # First, detect explicit multi-step markers
+    # Split on ' and ' that separates two commands, not inside query
+    # Heuristic: split on ' and ' where second part starts with verb or search
+    parts = []
+    # Use regex to split on ' and ' , ' then ', ','
+    # We split naively then re-join search queries that were over-split
+    raw_splits = re.split(r"\s+and\s+|\s+then\s+|\s*,\s*then\s*|\s*,\s*", text, flags=re.IGNORECASE)
+    # But need to avoid splitting queries like "Minecraft and Roblox"
+    # So we only keep splits where each part contains a verb-like structure
+    if len(raw_splits) <= 1:
+        return [text]
+    # Filter: if a split part doesn't contain a verb and is short but next part starts with search/open etc, keep
+    # Actually if original contains 'and search' we definitely want split
+    if re.search(r"\band\s+(?:search|find|look up|open|launch|start|go to|navigate)", lower):
+        # do smart split: keep 'and search...' as delimiter
+        # Re-split preserving meaning
+        segments = re.split(r"\s+and\s+(?=(?:search|find|look up|open|launch|start|go to|take me to|bring up|show)\b)", text, flags=re.IGNORECASE)
+        if len(segments) > 1:
+            return [s.strip() for s in segments if s.strip()]
+    # If we have many splits but likely a single query, don't over-split
+    # e.g. "search for Minecraft and Roblox" should NOT split into two actions
+    # Detect: if text starts with search and contains 'and' inside query -> keep whole
+    if re.match(r"^\s*(?:search|find|look up|google)", lower) and len(raw_splits) > 1:
+        # if all splits after first don't start with a command verb, treat as single search
+        has_cmd = any(re.match(r"^\s*(?:open|launch|start|search|find|go to|take me to)", p.strip().lower()) for p in raw_splits[1:])
+        if not has_cmd:
+            return [text]
+    return [p.strip() for p in raw_splits if p.strip()]
+
+def handle_natural_actions(user_text: str) -> str | None:
+    """
+    Master natural-language executor. Returns response string based on REAL execution,
+    or None if this message is not an action request (fallback to conversation).
+    """
+    if not user_text or not str(user_text).strip():
+        return None
+    raw = str(user_text).strip()
+    cleaned = _clean_filler(raw)
+    lower = cleaned.lower()
+    # Fast reject: pure greetings/questions/conversation without action verbs
+    # But we must NOT reject action-like utterances that are natural language
+    greetings_only = {"hi","hello","hey","yo","sup","what's up","whats up","heya","hiya","hi there","hello there","hey there","good morning","good afternoon","good evening"}
+    if lower in greetings_only:
+        return None
+    # quick heuristic: if text contains no action verb and no known target, treat as conversation
+    has_verb = bool(re.search(r"\b(open|launch|start|run|execute|go to|take me to|bring up|show me|show|navigate to|visit|search|find|look up|display|bring)\b", lower))
+    has_target_hint = any(k in lower for k in list(WEBSITE_ALIASES.keys())[:5]) or any(k in lower for k in ["chrome","vs code","vscode","discord","spotify","notepad","explorer","downloads","documents","desktop","settings","youtube","google","instagram","insta","gmail","github"])
+    # Also detect bare settings/folder shortcuts: "open my downloads" etc will have verb
+    # If no verb detected and not obviously an action, return None to handle via conversation
+    if not has_verb:
+        # allow implicit open like "insta", "youtube", "downloads" alone? Check if single word target directly maps
+        single = lower.strip()
+        if single in WEBSITE_ALIASES or single in _WEBSITE_FUZZY or single in _KNOWN_FOLDERS or single in ["chrome","vscode","discord","spotify"]:
+            # treat "insta" alone as "open insta"
+            has_verb = True
+            raw = f"open {raw}"
+            cleaned = _clean_filler(raw)
+        else:
+            # also allow "display settings", "sound settings" without verb prefix -> treat as open
+            if any(kw in lower for kw in ["settings","display settings","sound settings","bluetooth settings","wifi settings"]):
+                has_verb = True
+                raw = f"open {raw}"
+            else:
+                return None
+    # At this point we have an action-like message
+    # Multi-step split
+    steps = _split_multi_step(raw)
+    # For multi-step we execute sequentially and verify each
+    results: list[AvoraActionResult] = []
+    for idx, step in enumerate(steps):
+        print(f"[AVORA] PLAN STEP {idx+1}/{len(steps)}: \"{step}\"")
+        res = _single_action_to_result(step)
+        print(f"[AVORA] RESULT STEP {idx+1}: success={res.success} target={res.target} type={res.target_type} verified={res.verified} details={res.details} error={res.error}")
+        results.append(res)
+        if not res.success:
+            # Do NOT continue blindly if a dependency failed, but allow independent steps?
+            # For now stop on first failure and report
+            break
+    # Build truthful response from execution results
+    if not results:
+        return None
+    # Recovery attempt: if first application launch failed try alternative method
+    if len(results)==1 and not results[0].success and results[0].target_type=="application":
+        print("[AVORA] RECOVERY: retrying with fallback explorer/browser")
+        alt = _execute_website(results[0].target) if _resolve_website_url(results[0].target) else None
+        if alt and alt.success:
+            results[0] = alt
+    # Generate human response based on REAL results
+    all_success = all(r.success for r in results)
+    if all_success:
+        if len(results)==1:
+            r = results[0]
+            if r.target_type=="website":
+                return f"Done — opened {r.target} in your browser."
+            elif r.target_type=="folder":
+                return f"Done — opened {r.target} folder."
+            elif r.target_type=="application":
+                return f"Done — launched {r.target}."
+            elif r.target_type=="search":
+                return f"Done — searched for {r.target}."
+            elif r.target_type=="system_setting":
+                return f"Done — opened {r.target}."
+            elif r.target_type=="document":
+                return f"Done — opened {r.target}."
+            else:
+                return f"Done — completed: {r.details or r.target}"
+        else:
+            steps_done = ", ".join([f"{r.target} ({'ok' if r.success else 'failed'})" for r in results])
+            return f"Done — completed {len(results)} steps: {steps_done}."
+    else:
+        # partial failure
+        failed = [r for r in results if not r.success][0]
+        succeeded = [r for r in results if r.success]
+        if succeeded:
+            ok_list = ", ".join([r.target for r in succeeded])
+            return f"I opened {ok_list}, but couldn't complete '{failed.target}': {failed.error or 'unknown error'}"
+        else:
+            if "not found" in (failed.error or "").lower():
+                return f"I couldn't find '{failed.target}'. {failed.error}"
+            return f"I couldn't complete that: {failed.error or 'unknown error'}"
+
 
 
 # ============================================================
@@ -2218,13 +2876,16 @@ def find_start_menu_app(app_name: str):
                 if item_name in app_name:
                     score += 60
                 for word in app_name.split():
-                    if word in item_name:
+                    if len(word) >= 3 and word in item_name:
                         score += 10
                 if score > best_score:
                     best_score = score
                     best_match = item
         except Exception as error:
             print("[Start Menu Search Error]", error)
+    # Require meaningful score - avoid gibberish matches like 'app' -> 'Application Verifier'
+    if best_score < 40:
+        return None
     return best_match
 
 
@@ -2263,7 +2924,7 @@ def find_installed_application(app_name: str):
                     best_match = folder
         except Exception:
             continue
-    if best_match:
+    if best_match and best_score >= 40:
         path = str(best_match)
         APP_CACHE[normalized] = path
         return path
@@ -2980,7 +3641,23 @@ def process_message(user_message: str, attachments: list[dict] | None = None):
     add_to_history("user", user_message)
 
     # ============================================================
-    # COMMAND ROUTING (high confidence only)
+    # REAL-WORLD ACTION EXECUTION (MASTER FIX - natural language)
+    # ============================================================
+    # This pipeline understands natural language dynamically and
+    # EXECUTES real computer actions, then reports truthfully.
+    # It must run BEFORE any LLM fallback that would hallucinate.
+    try:
+        natural_result = handle_natural_actions(user_message)
+        if natural_result is not None:
+            add_to_history("assistant", natural_result)
+            print(f"[AVORA] FINAL RESPONSE (from real execution): {natural_result}")
+            return natural_result
+    except Exception as error:
+        print("[Natural Action Pipeline Error]", error)
+        traceback.print_exc()
+
+    # ============================================================
+    # COMMAND ROUTING (high confidence only - legacy fallback)
     # ============================================================
     if analysis["confidence"] >= 0.9:
         try:
