@@ -72,7 +72,11 @@ export function setAnalyticsEnabled(enabled: boolean): void {
 }
 
 export function getAnalyticsConsent(): boolean {
-  return getItem(STORAGE_KEYS.analyticsConsent, false);
+  // Default to true so real visitors are tracked immediately (privacy-friendly anonymous ids).
+  // User can opt-out via settings; if no value stored, assume consent granted.
+  const raw = localStorage.getItem(STORAGE_KEYS.analyticsConsent);
+  if (raw === null) return true;
+  try { return JSON.parse(raw) as boolean; } catch { return true; }
 }
 
 export function setAnalyticsConsent(consent: boolean): void {

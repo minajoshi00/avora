@@ -6,8 +6,15 @@ import { InteractiveAvoraCore } from '../brand/InteractiveAvoraCore';
 
 export function Vision() {
   return (
-    <section id="vision" className="relative py-32">
-      <div className="max-w-5xl mx-auto px-6 text-center">
+    <section id="vision" className="relative py-32 overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <motion.div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(700px,92vw)] h-[400px] rounded-full bg-purple-500/5 blur-3xl avora-drift"
+          animate={{ scale: [1, 1.05, 1], opacity: [0.4, 0.65, 0.4] }}
+          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </div>
+      <div className="max-w-5xl mx-auto px-6 text-center relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -29,9 +36,9 @@ export function Vision() {
           className="mt-16"
         >
           <motion.div
+            className="avora-float hover-target inline-flex items-center justify-center"
             whileHover={{ scale: 1.05 }}
             transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            className="hover-target inline-flex items-center justify-center"
           >
             <InteractiveAvoraCore state="excited" size={220} />
           </motion.div>

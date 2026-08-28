@@ -16,6 +16,15 @@ import { useAnalyticsSummary } from '../../hooks/useAnalyticsSummary';
 import { LoadingState, ErrorState } from './AnalyticsStates';
 import { formatCount, formatRate } from '../../lib/analytics-client';
 
+const colorMap: Record<string, { bg: string; border: string; text: string }> = {
+  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400' },
+  yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', text: 'text-yellow-400' },
+  emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
+  purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-400' },
+  cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', text: 'text-cyan-400' },
+  red: { bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400' },
+};
+
 export function OverviewSection() {
   const bugReports = getBugReports();
   const { state, reload } = useAnalyticsSummary('30d');
@@ -49,8 +58,8 @@ export function OverviewSection() {
               className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6"
             >
               <div className="flex items-start justify-between mb-4">
-                <div className={`p-3 rounded-xl bg-${stat.color}-500/10 border border-${stat.color}-500/20`}>
-                  <Icon size={20} className={`text-${stat.color}-400`} />
+                <div className={`p-3 rounded-xl ${colorMap[stat.color].bg} border ${colorMap[stat.color].border}`}>
+                  <Icon size={20} className={colorMap[stat.color].text} />
                 </div>
                 <span className={`text-xs font-medium ${stat.change.positive ? 'text-emerald-400' : 'text-red-300'}`}>
                   {stat.change.text}

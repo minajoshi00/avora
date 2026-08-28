@@ -6,8 +6,6 @@ import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { toggleMaintenance, getMaintenanceStatus } from '../../lib/maintenance';
 import { trackEvent } from '../../lib/analytics';
 
-const ADMIN_PASSWORD = import.meta.env.VITE_MAINTENANCE_ADMIN_PASSWORD || '';
-
 export function MaintenanceManagementPanel() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [confirmMode, setConfirmMode] = useState<'off' | 'on' | null>(null);
@@ -15,7 +13,8 @@ export function MaintenanceManagementPanel() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isToggling, setIsToggling] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [revealPassword, setRevealPassword] = useState(false);
   const [password, setPassword] = useState('');
 
   useEffect(() => {
@@ -37,8 +36,10 @@ export function MaintenanceManagementPanel() {
 
   const showConfirmation = (action: 'off' | 'on') => {
     setConfirmMode(action);
+    setPendingToggle(action);
     setPassword('');
-    setShowPassword(true);
+    setRevealPassword(false);
+    setShowModal(true);
   };
 
   const handlePasswordSubmit = async () => {
@@ -52,14 +53,16 @@ export function MaintenanceManagementPanel() {
     setSuccess(null);
 
     try {
-      const res = await toggleMaintenance({ password, expectedPassword: ADMIN_PASSWORD });
+      const res = await toggleMaintenance(password);
       if (res.maintenanceMode !== undefined) {
         setMaintenanceMode(res.maintenanceMode);
+        const wasDisable = pendingToggle === 'off';
         setConfirmMode(null);
+        setShowModal(false);
         setPendingToggle(null);
         setIsToggling(false);
         setSuccess(
-          pendingToggle === 'on'
+          wasDisable
             ? 'Website disabled successfully. Public visitors now see the maintenance screen.'
             : 'Website reopened successfully. The public website is now accessible again.'
         );
@@ -77,7 +80,8 @@ export function MaintenanceManagementPanel() {
 
   const handleCancel = () => {
     setConfirmMode(null);
-    setShowPassword(false);
+    setShowModal(false);
+    setRevealPassword(false);
     setPassword('');
   };
 
@@ -150,7 +154,7 @@ export function MaintenanceManagementPanel() {
       </div>
 
       {/* Confirmation Modal with Password */}
-      {showPassword && (
+      {showModal && (
         <motion.div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
           animate={{ opacity: [0, 1], transition: { duration: 0.2 } }}
@@ -162,7 +166,7 @@ export function MaintenanceManagementPanel() {
               transition={{ duration: 0.3 }}
               className="mb-6"
             >
-              {confirmMode === 'on' ? (
+              {confirmMode === 'off' ? (
                 <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
               ) : (
                 <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
@@ -170,11 +174,11 @@ export function MaintenanceManagementPanel() {
             </motion.div>
 
             <h3 className="text-xl font-bold text-white mb-3">
-              {confirmMode === 'on' ? 'Disable Public Website?' : 'Reopen Public Website?'}
+              {confirmMode === 'off' ? 'Disable Public Website?' : 'Reopen Public Website?'}
             </h3>
 
             <p className="text-sm text-gray-400 mb-6 line-clamp-2">
-              {confirmMode === 'on'
+              {confirmMode === 'off'
                 ? 'Visitors will temporarily see the maintenance screen. No existing website content will be changed.'
                 : 'The existing AVORA website will become publicly accessible again.'}
             </p>
@@ -185,7 +189,7 @@ export function MaintenanceManagementPanel() {
               </label>
               <div className="relative">
                 <input
-                  type={showPassword ? 'password' : 'text'}
+                  type={revealPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter admin password"
@@ -194,10 +198,10 @@ export function MaintenanceManagementPanel() {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setRevealPassword(!revealPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 hover:text-gray-200 transition-all"
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  {revealPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>

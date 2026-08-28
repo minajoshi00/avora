@@ -82,10 +82,14 @@ def _get_sapi_voice():
 # ============================================================
 
 def _get_voice_name():
-    return get_setting(
-        "voice.voice_name",
-        DEFAULT_VOICE
-    ) or DEFAULT_VOICE
+    name = get_setting("voice.voice_name", DEFAULT_VOICE) or DEFAULT_VOICE
+    # Guard invalid "default" value from older settings.json
+    if str(name).strip().lower() in ("default", "", "none"):
+        return DEFAULT_VOICE
+    # Validate against known edge voices; fallback to default if unknown string without hyphen
+    if "-" not in str(name) and str(name).lower() not in ("aria", "jenny", "guy"):
+        return DEFAULT_VOICE
+    return str(name)
 
 
 def _get_volume():
@@ -366,29 +370,27 @@ def _speak_sapi5(text):
             1
         )
 
+        # Guard against infinite loop if SAPI hangs — max 60s per utterance
+        _sapi_start = time.time()
         while True:
-
             if _stop_event.is_set():
-
                 try:
-                    sapi.Speak(
-                        "",
-                        2
-                    )
-
+                    sapi.Speak("", 2)
                 except Exception:
                     pass
-
                 break
-
+            if time.time() - _sapi_start > 60.0:
+                logger.warning("SAPI speech exceeded 60s timeout, aborting")
+                try:
+                    sapi.Speak("", 2)
+                except Exception:
+                    pass
+                break
             try:
-
                 if sapi.Status.RunningState != 2:
                     break
-
             except Exception:
                 break
-
             time.sleep(0.05)
 
         return True

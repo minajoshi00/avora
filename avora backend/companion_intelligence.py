@@ -2176,7 +2176,15 @@ class CompanionIntelligence:
                             self.goals.add_achievement(**achievement)
                             result["new_achievement"] = achievement
 
-        # 3. Proactive suggestion / contextual dialogue
+        # 3. Proactive suggestion / contextual dialogue (respect DND / settings)
+        # Respect DND / disabled proactive settings — no suggestion at all
+        try:
+            from settings import get_setting
+            if get_setting("notifications.do_not_disturb", False) or not get_setting("companion.proactive_messages", True):
+                result["session_summary"] = self.context.get_session_summary()
+                return result
+        except Exception:
+            pass
         if not self.is_silent_mode():
             suggestion = None
 
@@ -2362,3 +2370,14 @@ def get_companion_intelligence() -> CompanionIntelligence | None:
             if _companion is None:
                 _companion = CompanionIntelligence()
     return _companion
+
+
+def set_companion_intelligence(instance: CompanionIntelligence | None) -> None:
+    """Register an existing CompanionIntelligence as the global singleton.
+
+    Used by MainWindow so context_provider and the running companion share one
+    unified state. Pass None to clear the singleton (e.g. on shutdown).
+    """
+    global _companion
+    with _companion_lock:
+        _companion = instance

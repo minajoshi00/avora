@@ -13,7 +13,7 @@ export function useSound() {
     setMounted(true);
     try {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    } catch (_error) {
+    } catch {
       console.warn('Web Audio API not supported');
     }
     return () => {

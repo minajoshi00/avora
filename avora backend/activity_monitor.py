@@ -210,7 +210,7 @@ def classify_activity(title: str, process: str) -> ActivityType:
 PROACTIVE_MESSAGES = {
     "coding": {
         "friendly": [
-            "Brooo, you've been coding for a while! 😅 Need any help debugging?",
+            "you've been coding for a while! 😅 Need any help debugging?",
             "That code looking good bro? 👨‍💻 Need a fresh pair of eyes?",
             "You're on fire today! 🔥 Want me to review that logic?",
             "Code crunch time! 💻 Need a break reminder?",
@@ -231,7 +231,7 @@ PROACTIVE_MESSAGES = {
             "Coding steadily I see. I'm here if you need anything.",
         ],
         "friendly_bro": [
-            "Brooo, you've been coding for a long time 😭 Need help?",
+            "you've been coding for a long time 😭 Need help?",
             "Yo! That code looking clean or do you need a hand? 💪",
         ],
     },

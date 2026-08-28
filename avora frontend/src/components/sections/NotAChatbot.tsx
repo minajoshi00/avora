@@ -63,8 +63,8 @@ export function NotAChatbot() {
     <section className="relative py-32 overflow-hidden">
       {/* Background effects */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 right-0 w-[500px] h-[500px] rounded-full bg-purple-500/3 blur-3xl" />
-        <div className="absolute bottom-1/3 left-0 w-[400px] h-[400px] rounded-full bg-blue-500/3 blur-3xl" />
+        <div className="absolute top-1/3 right-0 w-[min(500px,88vw)] h-[min(500px,88vw)] rounded-full bg-purple-500/3 blur-3xl avora-drift" />
+        <div className="absolute bottom-1/3 left-0 w-[min(400px,80vw)] h-[min(400px,80vw)] rounded-full bg-blue-500/3 blur-3xl avora-drift" />
       </div>
 
       <div className="max-w-7xl mx-auto px-6">

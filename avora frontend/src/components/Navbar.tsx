@@ -121,8 +121,9 @@ export function Navbar() {
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className="md:hidden bg-[#0a0a0f]/95 backdrop-blur-xl border-b border-white/[0.06] overflow-hidden"
+            style={{ maxHeight: 'calc(100vh - 4rem)' }}
           >
-            <div className="px-6 py-6 flex flex-col gap-4">
+            <div className="px-6 py-6 flex flex-col gap-4 overflow-y-auto">
               {navLinks.map((link, index) => (
                 <motion.a
                   key={link.label}

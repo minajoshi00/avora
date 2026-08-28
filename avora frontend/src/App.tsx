@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { StrictMode } from 'react';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { CursorGlow } from './components/interactions/CursorGlow';
@@ -15,6 +14,7 @@ import { hasValidSession } from './lib/admin';
 import { initAnalytics, trackPageView } from './lib/analytics';
 import { getAnalyticsEnabled, getAnalyticsConsent } from './lib/storage';
 import { MaintenancePage } from './components/MaintenancePage';
+import { ErrorPage } from './components/ErrorPage';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.hash);
@@ -78,11 +78,7 @@ export default function App() {
     checkMaintenance();
   }, [currentPath]);
 
-  if (maintenanceMode) {
-    return <MaintenancePage />;
-  }
-
-  // Admin route logic
+  // Admin route logic (evaluated before maintenance gate so admin can recover from maintenance mode)
   const isAdminRoute = currentPath === '#/admin' || currentPath.startsWith('#/admin/');
   const isDashboardRoute = currentPath.startsWith('#/admin/') && currentPath !== '#/admin';
 
@@ -103,8 +99,20 @@ export default function App() {
     }
   }
 
+  if (maintenanceMode) {
+    return <MaintenancePage />;
+  }
+
+  // Handle unknown routes (404)
+  const knownPaths = ['', '#/admin', '#/admin/overview'];
+  const isKnownPath = knownPaths.some(path => currentPath === path || currentPath.startsWith(path));
+  
+  if (!isKnownPath && currentPath !== '' && currentPath !== '#') {
+    return <ErrorPage statusCode={404} />;
+  }
+
   return (
-    <StrictMode>
+    <>
       <CursorGlow />
       <CustomCursor />
       <SoundToggle />
@@ -116,6 +124,6 @@ export default function App() {
         <Home />
         <Footer />
       </div>
-    </StrictMode>
+    </>
   );
 }

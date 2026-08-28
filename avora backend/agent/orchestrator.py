@@ -256,11 +256,15 @@ class AgentOrchestrator:
         if self.is_cancelled():
             return {"success": False, "message": "Cancelled", "cancelled": True}
 
+        # No tool matched: do not fake success. Route to general chat
+        # if caller is desktop bridge, the message indicates unavailable capability
+        # so UI can show honest failure rather than simulated success.
         return {
-            "success": True,
-            "message": f"Request received: {goal}",
+            "success": False,
+            "message": f"I don't have a direct tool for: '{goal}'. Try rephrasing or use chat for general questions.",
             "skills": [s.name for s in self.skills],
             "project_path": project_target,
+            "needs_chat": True,
         }
 
     def _handle_vercel_fix(

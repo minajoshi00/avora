@@ -121,6 +121,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QTextEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -187,7 +188,92 @@ class VoiceRecognitionWorker(QThread):
 
 # ============================================================
 # MAIN WINDOW
-# ============================================================
+# ================================================================
+# CHAT COMPOSER (MULTILINE, CHATGPT-STYLE)
+# ================================================================
+
+class ChatComposer(QTextEdit):
+    """
+    Multiline message composer.
+
+    • Enter  -> send the message
+    • Shift + Enter -> insert a new line
+    • Grows with content up to a sensible maximum height,
+      then scrolls internally.
+    """
+
+    MIN_HEIGHT = 46
+    MAX_HEIGHT = 160
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setObjectName("InputBox")
+        self.setAcceptRichText(False)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setFixedHeight(self.MIN_HEIGHT)
+
+        if hasattr(self, "setPlaceholderText"):
+            self.setPlaceholderText("Message your AI Friend...")
+
+        # Handler resolved dynamically at keypress time so the rest of the
+        # app can keep overriding/re-wiring send logic safely.
+        self.send_handler = None
+        self.send_owner = None
+
+        self.textChanged.connect(self._auto_resize)
+        QTimer.singleShot(0, self._auto_resize)
+
+    def _resolve_send_handler(self):
+        """Find the current send callback (owner lookup happens live)."""
+
+        owner = getattr(self, "send_owner", None)
+
+        if owner is not None:
+            handler = getattr(owner, "send_message", None)
+
+            if callable(handler):
+                return handler
+
+        return self.send_handler if callable(self.send_handler) else None
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (
+            event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+        ):
+            handler = self._resolve_send_handler()
+
+            if handler is not None:
+                handler()
+                return
+
+        super().keyPressEvent(event)
+
+    def _auto_resize(self):
+        try:
+            doc_height = int(self.document().size().height()) + 12
+            new_height = max(self.MIN_HEIGHT, min(doc_height, self.MAX_HEIGHT))
+            if new_height != self.height():
+                self.setFixedHeight(new_height)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------
+    # Compatibility API — the rest of the app used the old single
+    # line QLineEdit interface. These shims keep every existing
+    # handler working unchanged.
+    # ------------------------------------------------------------
+
+    def text(self):
+        return self.toPlainText()
+
+    def setText(self, text):
+        self.setPlainText(str(text))
+
+    def clear(self):
+        self.setPlainText("")
 
 
 class MainWindow(QWidget):
@@ -380,6 +466,16 @@ class MainWindow(QWidget):
         if self.is_closing:
             return
 
+        # Reduced motion: keep the ambience completely still.
+        try:
+            from settings import get_setting
+
+            if not get_setting("appearance.show_message_animations", True):
+                return
+
+        except Exception:
+            pass
+
         if not self.neural_canvas or not self.neural_nodes:
             return
 
@@ -420,7 +516,9 @@ class MainWindow(QWidget):
                     node["vx"] = max(-max_v, min(max_v, node["vx"]))
                     node["vy"] = max(-max_v, min(max_v, node["vy"]))
 
-        self.neural_canvas.update()
+        # The ambience is painted directly on the main window, so request a
+        # repaint of the window itself for the next animation frame.
+        self.update()
 
     def paintEvent(self, event):
         """Override paintEvent to draw neural network."""
@@ -439,7 +537,11 @@ class MainWindow(QWidget):
             return
 
         try:
-            painter = QPainter(self.neural_canvas)
+            # Paint the ambience onto the window itself (behind all child
+            # widgets). Painting a child widget (neural_canvas) directly from
+            # the window's paintEvent bypasses the child's own paint path and
+            # triggers "QWidget::paintEngine: Should no longer be called".
+            painter = QPainter(self)
         except Exception:
             return
 
@@ -607,6 +709,34 @@ class MainWindow(QWidget):
         """Handle mouse release."""
         super().mouseReleaseEvent(event)
 
+    def changeEvent(self, event):
+        """Pause expensive animations when minimized/hidden to save CPU."""
+        try:
+            if event.type() == QEvent.Type.WindowStateChange:
+                is_min = bool(self.windowState() & Qt.WindowState.WindowMinimized)
+                for name in ("neural_timer", "_cursor_glow_timer"):
+                    t = getattr(self, name, None)
+                    if t is not None:
+                        if is_min:
+                            if t.isActive():
+                                t.stop()
+                        else:
+                            if not t.isActive():
+                                t.start(100 if name == "neural_timer" else 16)
+            elif event.type() == QEvent.Type.Hide:
+                for name in ("neural_timer", "_cursor_glow_timer"):
+                    t = getattr(self, name, None)
+                    if t is not None and t.isActive():
+                        t.stop()
+            elif event.type() == QEvent.Type.Show:
+                for name, interval in (("neural_timer", 100), ("_cursor_glow_timer", 16)):
+                    t = getattr(self, name, None)
+                    if t is not None and not t.isActive() and not self.isMinimized():
+                        t.start(interval)
+        except Exception:
+            pass
+        super().changeEvent(event)
+
     # ========================================================
     # CREATE UI
     # ========================================================
@@ -653,10 +783,10 @@ class MainWindow(QWidget):
         logo.setObjectName("Logo")
 
         logo.setStyleSheet("""
-            font-size: 26px;
+            font-size: 22px;
             font-weight: 800;
             letter-spacing: -0.5px;
-            padding: 5px 0;
+            padding: 4px 0;
         """)
 
         subtitle = QLabel("Intelligence, redefined.")
@@ -664,7 +794,7 @@ class MainWindow(QWidget):
         subtitle.setObjectName("SubText")
 
         subtitle.setStyleSheet("""
-            font-size: 11px;
+            font-size: 10px;
             letter-spacing: 1.5px;
             text-transform: uppercase;
             font-weight: 500;
@@ -674,17 +804,19 @@ class MainWindow(QWidget):
 
         sidebar_layout.addWidget(subtitle)
 
-        sidebar_layout.addSpacing(30)
+        sidebar_layout.addSpacing(16)
 
         # ====================================================
-        # NEW CHAT
+        # NEW CHAT (single primary action)
         # ====================================================
 
-        self.new_chat_button = QPushButton("＋   New Conversation")
+        self.new_chat_button = QPushButton("＋   New Chat")
 
         self.new_chat_button.setObjectName("NewChatButton")
 
         self.new_chat_button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.new_chat_button.setFixedHeight(38)
 
         self.new_chat_button.clicked.connect(self.create_new_chat)
 
@@ -693,10 +825,10 @@ class MainWindow(QWidget):
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                     stop:0 #00CC6A, stop:1 #00FF88);
                 border: none;
-                border-radius: 12px;
-                padding: 14px;
+                border-radius: 10px;
+                padding: 8px 12px;
                 color: #030703;
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 600;
             }
             QPushButton:hover {
@@ -721,6 +853,27 @@ class MainWindow(QWidget):
 
         self.voice_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
+        self.voice_button.setFixedHeight(32)
+
+        self.voice_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 8px;
+                padding: 4px 10px;
+                color: #9A9AAC;
+                font-size: 12px;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.05);
+                color: #F5F5F5;
+            }
+            QPushButton[listening="true"] {
+                color: #FF6B6B;
+            }
+        """)
+
         self.voice_button.clicked.connect(self.toggle_voice)
 
         self.update_voice_button()
@@ -737,17 +890,44 @@ class MainWindow(QWidget):
 
         self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
+        self.settings_button.setFixedHeight(32)
+
+        self.settings_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 8px;
+                padding: 4px 10px;
+                color: #9A9AAC;
+                font-size: 12px;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.05);
+                color: #F5F5F5;
+            }
+        """)
+
         self.settings_button.clicked.connect(self.open_settings)
 
         sidebar_layout.addWidget(self.settings_button)
 
-        sidebar_layout.addSpacing(10)
+        sidebar_layout.addSpacing(6)
 
         # ====================================================
         # CHAT SIDEBAR (RECENT CHATS)
         # ====================================================
 
         self.chat_sidebar = ChatSidebar(self.sidebar)
+
+        # Single primary New Chat action lives at the top of the sidebar;
+        # hide the duplicate button inside the recent-chats panel (its
+        # signal stays wired so nothing else breaks).
+        try:
+            self.chat_sidebar.new_chat_btn.setVisible(False)
+
+        except Exception:
+            pass
 
         self.chat_sidebar.chat_selected.connect(self.switch_chat)
 
@@ -786,19 +966,47 @@ class MainWindow(QWidget):
 
         header.setObjectName("Header")
 
-        header.setFixedHeight(70)
+        header.setFixedHeight(56)
 
         header_layout = QHBoxLayout(header)
 
         header_layout.setContentsMargins(25, 0, 25, 0)
 
+        header_inner = QVBoxLayout()
+
+        header_inner.setContentsMargins(0, 8, 0, 8)
+
+        header_inner.setSpacing(2)
+
         header_title = QLabel("AVORA")
 
         header_title.setObjectName("HeaderTitle")
 
-        header_layout.addWidget(header_title)
+        header_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        header_layout.setAlignment(header_title, Qt.AlignmentFlag.AlignCenter)
+        header_inner.addWidget(header_title)
+
+        # Status indicator ("Ready" / "Thinking" / "Error" ...)
+        self.status_label = QLabel("● Ready")
+
+        self.status_label.setObjectName("StatusLabel")
+
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.status_label.setStyleSheet("""
+            color: #65E6A5;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            background: transparent;
+        """)
+
+        header_inner.addWidget(self.status_label)
+
+        header_layout.addStretch(1)
+
+        header_layout.addLayout(header_inner)
+
+        header_layout.addStretch(1)
 
         right_layout.addWidget(header)
 
@@ -824,9 +1032,9 @@ class MainWindow(QWidget):
 
         self.message_layout = QVBoxLayout(self.message_widget)
 
-        self.message_layout.setContentsMargins(36, 24, 36, 24)
+        self.message_layout.setContentsMargins(28, 16, 28, 12)
 
-        self.message_layout.setSpacing(18)
+        self.message_layout.setSpacing(8)
 
         self.message_layout.addStretch()
 
@@ -840,7 +1048,7 @@ class MainWindow(QWidget):
 
         input_outer = QFrame()
 
-        input_outer.setFixedHeight(96)
+        input_outer.setMinimumHeight(96)
 
         input_layout = QHBoxLayout(input_outer)
 
@@ -861,13 +1069,15 @@ class MainWindow(QWidget):
 
         input_container_layout.setContentsMargins(10, 6, 10, 6)
 
-        self.user_input = QLineEdit()
+        self.user_input = ChatComposer()
 
         self.user_input.setObjectName("InputBox")
 
         self.user_input.setPlaceholderText("Message your AI Friend...")
 
-        self.user_input.returnPressed.connect(self.send_message)
+        self.user_input.send_handler = self.send_message
+
+        self.user_input.send_owner = self
 
         self.send_button = QPushButton("➤")
 
@@ -924,19 +1134,131 @@ class MainWindow(QWidget):
         main_layout.addWidget(right_side, 1)
 
         # ====================================================
-        # WELCOME MESSAGE
+        # INITIAL STATE
         # ====================================================
 
-        self.update_status(
-            "ready",
-            "Ready",
-        )
+        self.show_empty_state()
 
-        self.add_ai_message_rich("Hey bro! 👋 Good to see you.")
+        try:
+            self.update_status(
+                "ready",
+                "Ready",
+            )
+        except Exception:
+            pass
+
+        # The welcome is integrated into the empty-state design above.
+        # No separate floating greeting bubble is added to the chat flow.
 
     # ========================================================
     # STYLES
     # ========================================================
+
+    # ========================================================
+    # EMPTY STATE (FIRST-USE CONVERSATION)
+    # ========================================================
+
+    def show_empty_state(
+        self,
+    ):
+        """
+        Centered welcome shown for a fresh/empty conversation.
+        Replaced naturally by real messages as they arrive.
+        """
+
+        container = QWidget()
+
+        container.setObjectName("EmptyState")
+
+        layout = QVBoxLayout(container)
+
+        layout.setContentsMargins(16, 48, 16, 24)
+
+        layout.setSpacing(12)
+
+        icon = QLabel("✦")
+
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        icon.setStyleSheet("""
+            font-size: 42px;
+            color: #00CC6A;
+            background: transparent;
+        """)
+
+        title = QLabel("How can I help you today?")
+
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        title.setStyleSheet("""
+            font-size: 22px;
+            font-weight: 700;
+            color: #FFFFFF;
+            background: transparent;
+        """)
+
+        subtitle = QLabel(
+            "Ask anything — Enter sends your message, "
+            "Shift + Enter adds a new line."
+        )
+
+        subtitle.setWordWrap(True)
+
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        subtitle.setStyleSheet("""
+            font-size: 13px;
+            color: #8A8A99;
+            background: transparent;
+        """)
+
+        layout.addWidget(icon)
+
+        layout.addWidget(title)
+
+        layout.addWidget(subtitle)
+
+        layout.addStretch()
+
+        self.message_layout.insertWidget(self.message_layout.count() - 1, container)
+
+        self.empty_state = container
+
+        QTimer.singleShot(0, lambda: self._center_empty_state(container))
+
+    def _update_empty_state(self):
+        """Show the welcome state for an empty conversation, otherwise hide it."""
+
+        empty = getattr(self, "empty_state", None)
+
+        if empty is None:
+            return
+
+        has_messages = self.message_layout.count() > 1
+
+        try:
+            empty.setVisible(not has_messages)
+
+        except RuntimeError:
+            # Widget was deleted (e.g. new_chat cleanup) — recreate it.
+            self.empty_state = None
+
+            if not has_messages:
+                self.show_empty_state()
+
+    def _center_empty_state(self, container):
+        """Vertically center the empty state within the chat area."""
+
+        if not container.isVisible():
+            return
+
+        viewport_height = self.chat_area.viewport().height()
+
+        total_height = container.sizeHint().height()
+
+        top_margin = max(0, int((viewport_height - total_height) / 2.5))
+
+        container.layout().setContentsMargins(16, top_margin, 16, 24)
 
     def apply_shadow(
         self,
@@ -1146,7 +1468,7 @@ class MainWindow(QWidget):
             state_label = (
                 user_state.value if hasattr(user_state, "value") else str(user_state)
             )
-            self.update_status("ready", f"Companion - {state_label}")
+            self.update_status("ready", str(state_label).capitalize())
 
     def start_companion(self):
         """Initialize and start the Companion Intelligence system."""
@@ -1156,6 +1478,12 @@ class MainWindow(QWidget):
                 activity_monitor=self.activity_monitor,
                 personality=personality,
             )
+            # Register as global singleton so context_provider reads the same live state
+            try:
+                from companion_intelligence import set_companion_intelligence
+                set_companion_intelligence(self.companion)
+            except Exception:
+                pass
             print("[COMPANION] Intelligence system initialized")
 
             self.behavior_controller = CompanionBehaviorController(self)
@@ -1201,6 +1529,11 @@ class MainWindow(QWidget):
                 pass
             self.companion_timer = None
         self.companion = None
+        try:
+            from companion_intelligence import set_companion_intelligence
+            set_companion_intelligence(None)
+        except Exception:
+            pass
         print("[COMPANION] Stopped")
 
     def _start_companion_timer(self):
@@ -1408,6 +1741,23 @@ class MainWindow(QWidget):
 
         elif path == "voice.auto_stop_previous":
             pass
+
+        # ----------------------------------------------------
+        # VOICE PRIVACY — never auto-enable microphone/wake word
+        # ----------------------------------------------------
+
+        elif path == "voice_extended.continuous_listening":
+            # User toggled continuous listening in Settings — privacy:
+            # never start microphone automatically. Only manual mic button
+            # or explicit wake-word opt-in via UI should start listening.
+            if not new_value:
+                try:
+                    from voice import stop_wake_word
+                    stop_wake_word()
+                except Exception:
+                    pass
+            # When enabling via Settings, do NOT call start_wake_word.
+            # The user must explicitly activate it via the companion UI.
 
         # ----------------------------------------------------
         # CHARACTER SIZE
@@ -1939,7 +2289,16 @@ class MainWindow(QWidget):
             QTimer.singleShot(700, self.return_to_idle)
 
     def _animate_widget_entrance(self, widget):
-        """Animate widget fading/sliding in."""
+        """Animate widget fading/sliding in (respects motion settings)."""
+        try:
+            from settings import get_setting
+
+            if not get_setting("appearance.show_message_animations", True):
+                return
+
+        except Exception:
+            pass
+
         try:
             from PySide6.QtCore import QEasingCurve, QPropertyAnimation
 
@@ -1972,6 +2331,8 @@ class MainWindow(QWidget):
         self,
         text,
     ):
+
+        self._update_empty_state()
 
         bubble = QLabel(str(text))
 
@@ -2014,6 +2375,8 @@ class MainWindow(QWidget):
     ):
         """Add a Markdown-rendered AI message using QTextBrowser."""
 
+        self._update_empty_state()
+
         browser = QTextBrowser()
         browser.setObjectName("AIBubble")
 
@@ -2028,13 +2391,13 @@ class MainWindow(QWidget):
         browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         browser.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
 
-        # Style the QTextBrowser to match AIBubble
+        # Style the QTextBrowser — compact, readable AI message
         browser.setStyleSheet(
             "QTextBrowser {"
-            "  background-color: #20202D;"
-            "  border: 1px solid #303044;"
-            "  border-radius: 16px;"
-            "  padding: 12px 16px;"
+            "  background-color: #1E1E2A;"
+            "  border: 1px solid #2B2B3D;"
+            "  border-radius: 14px;"
+            "  padding: 8px 12px;"
             "  font-size: 14px;"
             "  color: white;"
             "}"
@@ -2042,6 +2405,16 @@ class MainWindow(QWidget):
 
         html = markdown_to_html(str(text))
         browser.setHtml(html)
+
+        # Tighten the document's internal margins so markdown lists and
+        # paragraphs sit close to the bubble edges.
+        try:
+            browser.document().setDocumentMargin(2)
+
+            browser.document().setIndentWidth(10)
+
+        except Exception:
+            pass
 
         # Adjust height after layout settles to avoid nested scrollbars
         QTimer.singleShot(0, lambda: self._adjust_browser_height(browser, max_width))
@@ -2066,9 +2439,13 @@ class MainWindow(QWidget):
         try:
             doc = browser.document()
             actual_width = width or browser.maximumWidth() or 680
+            # setTextWidth doesn't immediately trigger a relayout, so clone
+            # the document to force a synchronous recalculation before measuring.
             doc.setTextWidth(actual_width)
-            height = int(doc.size().height()) + 24
-            browser.setMinimumHeight(max(40, height))
+            cloned = doc.clone()
+            cloned.setTextWidth(actual_width)
+            height = int(cloned.size().height()) + 20
+            browser.setMinimumHeight(max(36, height))
             browser.setMaximumHeight(height)
         except Exception:
             pass
@@ -2199,21 +2576,94 @@ class MainWindow(QWidget):
         if self.thinking_label is not None:
             return
 
-        self.thinking_label = QLabel("AI Friend is thinking... 🤔")
+        self.thinking_label = QLabel("Thinking")
 
         self.thinking_label.setObjectName("Typing")
 
+        self.thinking_label.setStyleSheet("""
+            font-size: 12px;
+            color: #8A8A99;
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 12px;
+            padding: 5px 14px;
+        """)
+
+        # Animated dots
+        self.dots_label = QLabel("")
+
+        try:
+            accent = get_current_theme().get("accent", {})
+
+            dot_color = (
+                accent.get("default", "#00CC6A")
+                if isinstance(accent, dict)
+                else "#00CC6A"
+            )
+
+        except Exception:
+            dot_color = "#00CC6A"
+
+        self.dots_label.setStyleSheet(
+            f"font-size: 13px; color: {dot_color}; background: transparent;"
+        )
+
+        # Animate dots + subtle breathing opacity (respects reduced-motion setting)
+        self.dot_animation_state = 0
+        self.dot_timer = QTimer()
+        self.dot_timer.timeout.connect(self._update_dots_animation)
+        self.dot_timer.start(500)  # 500ms per frame
+        # Breathing opacity for thinking label — lightweight Qt animation
+        try:
+            if get_setting("appearance.show_message_animations", True):
+                eff = QGraphicsDropShadowEffect(self.thinking_label)
+                eff.setBlurRadius(0)
+                eff.setColor(QColor(0, 0, 0, 0))
+                self.thinking_label.setGraphicsEffect(eff)
+                self._thinking_opacity = QGraphicsDropShadowEffect
+                self._thinking_breath_dir = 1
+                self._thinking_breath_opacity = 0.55
+        except Exception:
+            pass
+
         row = QHBoxLayout()
-
         row.setContentsMargins(0, 0, 0, 0)
-
         row.addWidget(self.thinking_label)
-
+        row.addWidget(self.dots_label)
         row.addStretch()
 
         self.message_layout.insertLayout(self.message_layout.count() - 1, row)
 
         self.scroll_to_bottom()
+
+    def _update_dots_animation(self):
+        """Animate the thinking-indicator dots (… cycling) + breathing opacity."""
+
+        try:
+            self.dot_animation_state = (self.dot_animation_state + 1) % 4
+            self.dots_label.setText("." * self.dot_animation_state)
+            # Subtle breathing: toggle thinking label opacity
+            if hasattr(self, "_thinking_breath_opacity"):
+                self._thinking_breath_opacity += 0.08 * self._thinking_breath_dir
+                if self._thinking_breath_opacity >= 0.95:
+                    self._thinking_breath_dir = -1
+                elif self._thinking_breath_opacity <= 0.55:
+                    self._thinking_breath_dir = 1
+                try:
+                    # Use stylesheet alpha as lightweight breathing without extra animation objects
+                    alpha = int(180 * self._thinking_breath_opacity)
+                    self.thinking_label.setStyleSheet(f"""
+                        font-size: 12px;
+                        color: rgba(138, 138, 153, {alpha});
+                        background-color: rgba(255, 255, 255, 0.04);
+                        border: 1px solid rgba(255, 255, 255, 0.07);
+                        border-radius: 12px;
+                        padding: 5px 14px;
+                    """)
+                except Exception:
+                    pass
+        except (RuntimeError, AttributeError):
+            pass
 
     # ========================================================
     # REMOVE THINKING
@@ -2225,6 +2675,17 @@ class MainWindow(QWidget):
 
         if self.thinking_label is None:
             return
+
+        dot_timer = getattr(self, "dot_timer", None)
+
+        if dot_timer is not None:
+            try:
+                dot_timer.stop()
+
+            except RuntimeError:
+                pass
+
+            self.dot_timer = None
 
         try:
             self.thinking_label.deleteLater()
@@ -2418,7 +2879,7 @@ class MainWindow(QWidget):
         max_length = get_setting("chat.max_message_length", 2000)
         if len(message) > max_length:
             self.add_ai_message_rich(
-                f"Brooo, that message is too long! 😅\n\n"
+                f"that message is too long! 😅\n\n"
                 f"Maximum length is {max_length} characters.\n"
                 f"Your message is {len(message)} characters.\n\n"
                 f"Try splitting it into smaller messages."
@@ -2460,16 +2921,17 @@ class MainWindow(QWidget):
 
         self.set_processing_state(True)
 
-        self.update_status(
-            "thinking",
-            "Thinking",
-        )
-
-        self.character_call("react_to_message", message)
-        self.character_call("set_thinking", True)
-        self.character_call(
-            "react", "thinking", {"message": "I'm thinking through your request…"}
-        )
+        # Screen-vision distinct status: show "Looking…" before thinking when vision intent
+        _lower = message.lower().strip()
+        _vision_phrases = ("see my screen", "look at my screen", "what's on my screen", "what is on my screen", "what am i doing", "what i'm doing", "describe my screen", "what do you see", "can you see my screen")
+        if any(p in _lower for p in _vision_phrases):
+            self.update_status("thinking", "Looking at your screen…")
+            self.character_call("react", "thinking", {"message": "Let me look at your screen…"})
+        else:
+            self.update_status("thinking", "Thinking")
+            self.character_call("react_to_message", message)
+            self.character_call("set_thinking", True)
+            self.character_call("react", "thinking", {"message": "I'm thinking through your request…"})
 
         self.show_thinking()
 
@@ -2486,6 +2948,12 @@ class MainWindow(QWidget):
         self.worker.stream_finished.connect(self._on_stream_finished)
         self.worker.stream_failed.connect(self._on_stream_failed)
 
+        # Safety watchdog: reset processing state if worker never signals completion
+        self._worker_watchdog = QTimer(self)
+        self._worker_watchdog.setSingleShot(True)
+        self._worker_watchdog.timeout.connect(self._on_worker_timeout)
+        self._worker_watchdog.start(60000)  # 60 second hard timeout
+
         self.worker.start()
 
     # ========================================================
@@ -2500,6 +2968,8 @@ class MainWindow(QWidget):
         self.remove_thinking()
         self._current_browser = self.add_ai_message_rich("")
         self._current_full_text = ""
+        # Ensure status reflects active streaming
+        self.update_status("thinking", "Creating")
 
     def _on_chunk_ready(self, chunk):
         """Called when a new chunk of text is available."""
@@ -2840,6 +3310,20 @@ class MainWindow(QWidget):
 
         worker.deleteLater()
 
+        # Stop the watchdog timer if it's still running
+        if hasattr(self, "_worker_watchdog") and self._worker_watchdog is not None:
+            self._worker_watchdog.stop()
+            self._worker_watchdog = None
+
+    def _on_worker_timeout(self):
+        """Safety fallback: reset UI state if worker never completed."""
+        print("[WARNING] Worker did not complete within timeout — resetting state.")
+        self._current_browser = None
+        self.update_status("error", "Timeout")
+        self.set_processing_state(False)
+        self.remove_thinking()
+        self.cleanup_worker()
+
     # ========================================================
     # PROCESSING STATE
     # ========================================================
@@ -2854,6 +3338,16 @@ class MainWindow(QWidget):
         self.user_input.setEnabled(not self.is_processing)
 
         self.send_button.setEnabled(not self.is_processing)
+        # Visual send/stop feedback — subtle opacity change without layout shift
+        try:
+            if self.is_processing:
+                self.send_button.setStyleSheet(self.send_button.styleSheet() + "\nQPushButton:disabled { opacity: 0.45; }")
+            else:
+                # Trigger polish to restore disabled style cleanly
+                self.send_button.style().unpolish(self.send_button)
+                self.send_button.style().polish(self.send_button)
+        except Exception:
+            pass
 
         self.new_chat_button.setEnabled(not self.is_processing)
 
@@ -3281,6 +3775,33 @@ class MainWindow(QWidget):
 
         scrollbar.setValue(scrollbar.maximum())
 
+        # Bubble heights settle asynchronously (QTextBrowser sizing), which
+        # shifts the scroll range right after this call. Re-pin for a short
+        # window so the newest message stays fully visible.
+        self._repin_budget = 8
+
+        scrollbar.rangeChanged.connect(self._repin_scroll)
+
+    def _repin_scroll(
+        self,
+    ):
+        """Briefly follow the growing conversation after new messages."""
+
+        if self._repin_budget <= 0:
+            try:
+                self.chat_area.verticalScrollBar().rangeChanged.disconnect(
+                    self._repin_scroll
+                )
+            except (RuntimeError, TypeError):
+                pass
+            return
+
+        self._repin_budget -= 1
+
+        scrollbar = self.chat_area.verticalScrollBar()
+
+        scrollbar.setValue(scrollbar.maximum())
+
     # ========================================================
     # CHARACTER POSITION
     # ========================================================
@@ -3485,6 +4006,31 @@ class MainWindow(QWidget):
         event,
     ):
 
+        # Preserve timer/CPU optimization for minimize/hide (merged from earlier changeEvent)
+        try:
+            if event.type() == QEvent.Type.WindowStateChange:
+                is_min = bool(self.windowState() & Qt.WindowState.WindowMinimized)
+                for name in ("neural_timer", "_cursor_glow_timer"):
+                    t = getattr(self, name, None)
+                    if t is not None:
+                        if is_min:
+                            if t.isActive():
+                                t.stop()
+                        else:
+                            if not t.isActive():
+                                t.start(100 if name == "neural_timer" else 16)
+            elif event.type() == QEvent.Type.Hide:
+                for name in ("neural_timer", "_cursor_glow_timer"):
+                    t = getattr(self, name, None)
+                    if t is not None and t.isActive():
+                        t.stop()
+            elif event.type() == QEvent.Type.Show:
+                for name, interval in (("neural_timer", 100), ("_cursor_glow_timer", 16)):
+                    t = getattr(self, name, None)
+                    if t is not None and not t.isActive() and not self.isMinimized():
+                        t.start(interval)
+        except Exception:
+            pass
         super().changeEvent(event)
 
         if event.type() == QEvent.Type.WindowStateChange:
@@ -3596,6 +4142,20 @@ class MainWindow(QWidget):
                 self.companion_timer.stop()
             except Exception:
                 pass
+
+        if getattr(self, "_cursor_glow_timer", None) is not None:
+            try:
+                self._cursor_glow_timer.stop()
+            except Exception:
+                pass
+            self._cursor_glow_timer = None
+
+        if getattr(self, "dot_timer", None) is not None:
+            try:
+                self.dot_timer.stop()
+            except Exception:
+                pass
+            self.dot_timer = None
 
         # ----------------------------------------------------
         # CLEANUP NEURAL CANVAS

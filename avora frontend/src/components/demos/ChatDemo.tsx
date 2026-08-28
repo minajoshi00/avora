@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, Image as ImageIcon } from 'lucide-react';
+import { Send, Mic, Image as ImageIcon, Copy, Check } from 'lucide-react';
 import { InteractiveAvoraCore } from '../brand/InteractiveAvoraCore';
 import { cn } from '../../lib/utils';
 
@@ -38,6 +38,12 @@ export function ChatDemo() {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
 
   const handleSend = (text: string) => {
     if (!text.trim()) return;
@@ -63,6 +69,19 @@ export function ChatDemo() {
       setMessages((prev) => [...prev, avoraMessage]);
       setIsTyping(false);
     }, 1200 + Math.random() * 800);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend(input);
+    }
+  };
+
+  const copyToClipboard = (content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedMessageId(content);
+    setTimeout(() => setCopiedMessageId(null), 2000);
   };
 
   return (
@@ -122,13 +141,24 @@ export function ChatDemo() {
             >
               <div
                 className={cn(
-                  'max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed',
+                  'max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed relative group',
                   msg.role === 'user'
                     ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-400/20 text-white rounded-tr-sm'
                     : 'bg-white/[0.06] text-gray-300 rounded-tl-sm'
                 )}
               >
                 {msg.content}
+                <button
+                  onClick={() => copyToClipboard(msg.content)}
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-gray-400 hover:text-white hover:bg-white/10"
+                  aria-label="Copy message"
+                >
+                  {copiedMessageId === msg.content ? (
+                    <Check size={12} className="text-green-400" />
+                  ) : (
+                    <Copy size={12} />
+                  )}
+                </button>
               </div>
             </motion.div>
           ))}
@@ -158,6 +188,7 @@ export function ChatDemo() {
             </div>
           </motion.div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Suggested prompts */}
@@ -184,14 +215,14 @@ export function ChatDemo() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend(input)}
+            onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             className="flex-1 bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-400/30 transition-colors"
             whileFocus={{ scale: 1.02 }}
           />
           <motion.button
             onClick={() => handleSend(input)}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isTyping}
             className="p-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white hover-target disabled:opacity-50"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}

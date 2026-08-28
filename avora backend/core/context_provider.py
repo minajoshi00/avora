@@ -102,22 +102,29 @@ def _collect_screen_context(context):
         return
 
     def _read():
-        from screen_awareness import ScreenAwareness
-
-        # Only use a running instance owned by the main window;
-        # never start collection just to read context.
-        instance = getattr(ScreenAwareness, "_instance", None)
-        if instance is None or not instance.is_available():
+        # Use the live singleton instances — never create new ones.
+        # Companion singleton holds the ScreenAwareness lifecycle when enabled;
+        # fall back to any companion intelligence snapshot if available.
+        try:
+            from companion_intelligence import get_companion_intelligence
+            ci = get_companion_intelligence()
+            if ci is not None:
+                snap = ci.context.get_snapshot()
+                if snap and getattr(snap, "activity_type", None) not in (None, "unknown", ""):
+                    return {
+                        "screen_activity": snap.activity_type,
+                        "screen_analysis": str(getattr(snap, "window_title", ""))[:200],
+                    }
+        except Exception:
+            pass
+        # Last resort: try vision engine's last analysis if a ScreenAwareness
+        # instance was registered on the main window (stored via app_data).
+        try:
+            import ctypes
+            # No direct global instance — return None to avoid fabricating data
             return None
-
-        summary = instance.get_context_summary()
-        if not isinstance(summary, dict) or not summary:
+        except Exception:
             return None
-
-        return {
-            "screen_activity": summary.get("current_activity", ""),
-            "screen_analysis": str(summary.get("analysis", ""))[:200],
-        }
 
     screen = _safe(_read)
     if screen:
@@ -223,7 +230,7 @@ def get_context_summary_text(max_lines: int = 12) -> str:
     if "screen_activity" in context:
         lines.append(f"- Screen shows: {context['screen_activity']}")
 
-    if "active_goals":
+    if "active_goals" in context:
         goals = context.get("active_goals", [])
         for goal in goals:
             progress = int(float(goal.get("progress", 0.0)) * 100)

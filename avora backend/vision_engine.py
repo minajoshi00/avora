@@ -314,10 +314,17 @@ class VisionEngine:
         
         try:
             with self._mss.mss() as sct:
-                # Capture primary monitor
-                monitor = sct.monitors[1]
+                # Handle multi-monitor and headless edge cases
+                monitors = sct.monitors
+                if not monitors or len(monitors) < 2:
+                    # No separate monitor entries; try primary or all
+                    monitor = monitors[1] if len(monitors) > 1 else monitors[0] if monitors else None
+                else:
+                    monitor = monitors[1]
+                if monitor is None or monitor.get("width", 0) <= 0 or monitor.get("height", 0) <= 0:
+                    logger.debug("No valid monitor for capture")
+                    return None
                 screenshot = sct.grab(monitor)
-                # Convert to PIL Image
                 img = self._pil.frombytes('RGB', screenshot.size, screenshot.rgb)
                 return img
         except Exception as e:

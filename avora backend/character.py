@@ -7,7 +7,13 @@ import math
 import random
 import time
 
-from PySide6.QtWidgets import QWidget, QLabel, QMenu, QGraphicsDropShadowEffect
+from PySide6.QtWidgets import (
+    QWidget,
+    QLabel,
+    QMenu,
+    QGraphicsDropShadowEffect,
+    QApplication,
+)
 from PySide6.QtGui import (
     QPainter,
     QBrush,
@@ -597,21 +603,7 @@ class Character(QWidget):
                     parent_window.user_input.setFocus()
         event.accept()
 
-    def update_animation(self, animation):
-        if self._float_animation is not None:
-            self._float_animation.stop()
-            self._float_animation = None
-
-        if animation == "gentle_float":
-            pass
-        elif animation == "pulse":
-            pass
-        elif animation == "bounce":
-            pass
-        elif animation == "breathing":
-            pass
-        elif animation == "glow_pulse":
-            pass
+    def show_notification(self, message, duration=2200):
         if not message:
             return
         if self.notification_label is None:

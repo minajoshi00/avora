@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Copy, Check } from 'lucide-react';
 
 type Message = {
   id: string;
@@ -22,7 +23,7 @@ const DEFAULT_CONFIG: AIConfig = {
     'What makes AVORA different?',
     'Show me what you can do.',
   ],
-  apiEndpoint: '/api/ai/gemini',
+  apiEndpoint: '/api/ai/chat',
 };
 
 export function LiveAI() {
@@ -38,6 +39,12 @@ export function LiveAI() {
   const [isConnected, setIsConnected] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [showReset, setShowReset] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, aiStatus]);
 
   useEffect(() => {
     const checkMaintenance = async () => {
@@ -77,7 +84,7 @@ export function LiveAI() {
     setShowReset(false);
 
     try {
-      const res = await fetch('/api/ai/gemini', {
+      const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -115,20 +122,18 @@ export function LiveAI() {
     }
   };
 
-  const handleSend = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    setInput('');
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(input);
+    }
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey && input.trim()) {
-        sendMessage(input);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  const copyToClipboard = (content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedMessageId(content);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
 
   useEffect(() => {
     if (lastError && aiStatus === 'idle') {
@@ -176,16 +181,27 @@ export function LiveAI() {
         </div>
       </div>
 
-      <div className="p-6 h-[400px] overflow-y-auto space-y-4">
+      <div className="p-6 h-[min(400px,80vw)] overflow-y-auto space-y-4">
         {messages.map((msg, _index) => (
           <div
             key={msg.id}
             className={msg.role === 'user'
-              ? 'max-w-[80%] px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-400/20 text-white rounded-tr-sm'
-              : 'px-4 py-2.5 rounded-2xl bg-white/[0.06] text-gray-300 rounded-tl-sm'
+              ? 'max-w-[80%] px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-400/20 text-white rounded-tr-sm relative group'
+              : 'px-4 py-2.5 rounded-2xl bg-white/[0.06] text-gray-300 rounded-tl-sm relative group'
             }
           >
             <div className="break-all">{msg.content}</div>
+            <button
+              onClick={() => copyToClipboard(msg.content)}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-gray-400 hover:text-white hover:bg-white/10"
+              aria-label="Copy message"
+            >
+              {copiedMessageId === msg.content ? (
+                <Check size={12} className="text-green-400" />
+              ) : (
+                <Copy size={12} />
+              )}
+            </button>
           </div>
         ))}
         {aiStatus === 'thinking' && (
@@ -209,6 +225,7 @@ export function LiveAI() {
             </button>
           </div>
           )}
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="p-4 border-t border-white/[0.06] flex items-center gap-2">
@@ -216,14 +233,14 @@ export function LiveAI() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
+          onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           className="flex-1 bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-blue-400/30 transition-colors"
           aria-label="Message AVORA"
         />
         <button
           type="submit"
-          onClick={handleSend}
+          onClick={() => sendMessage(input)}
           disabled={aiStatus !== 'idle' || !input.trim()}
           className="p-1.5 rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white hover-target disabled:opacity-50"
           title="Send message to AVORA"

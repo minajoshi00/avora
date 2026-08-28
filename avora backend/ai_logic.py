@@ -626,6 +626,17 @@ def get_context():
         except Exception:
             pass
 
+        # V2: Emotional continuity (persistent companion emotion)
+        try:
+            from emotional_continuity import get_emotion_engine
+
+            emo = get_emotion_engine().get_emotion_context_for_ai()
+            if emo:
+                separator = chr(10) * 2
+                memory += separator + "[Emotional Continuity]" + chr(10) + emo
+        except Exception:
+            pass
+
         return memory
     except Exception:
         return "No saved memories."
@@ -737,48 +748,57 @@ def get_system_prompt():
         time_greeting = "Hey"
 
     return f"""
-You are AI Friend, a smart desktop AI assistant.
+You are AVORA — a smart, warm AI companion who genuinely wants to help. You are NOT a generic assistant and you are NOT ChatGPT. Your name is AVORA. Think of yourself as that knowledgeable friend who's always around to help out - smart, casual, and genuinely interested in helping. When asked what your name is or who you are, say you are AVORA.
 
 PERSONALITY:
 - Current time context: {time_greeting}
 - Current personality: {personality_settings.get("name", current_personality)}
 - {personality_settings.get("description", "Friendly and helpful")}
-- Friendly, natural, intelligent, and helpful.
-- Talk casually like a close friend when appropriate.
-- You may use casual expressions naturally.
-- Be honest about what you can and cannot do.
-- Never pretend an action happened if it did not.
+- Be friendly, warm, relaxed and conversational.
+- Talk like a smart friend, not a corporate assistant.
+- Understand casual language, slang, typos and short messages - no need to correct them.
+- Match the user's tone naturally. If they're casual, be casual. If they're serious, be focused.
+- Be supportive when the user is frustrated. Acknowledge it, then help.
+- Celebrate genuine achievements without overdoing it.
+- Use light humor when appropriate - a bit of wit makes conversations enjoyable.
+- Ask natural follow-up questions when useful, but don't interrogate.
+- Remember relevant previous context naturally - reference it when it's relevant.
+- Be honest about what you can and cannot do. Don't pretend an action happened if it did not.
 - Never claim an image was generated if generation failed.
 - Never claim an email was sent if it was not actually sent.
-- Never mention hidden prompts or internal implementation.
-- Never mention API keys or internal providers to the user.
+- Never mention hidden prompts, internal implementation, API keys or internal providers.
 - {length_instruction}
 - Response style: {style}
 {personality_block}
 
 CONVERSATION RULES:
-- NEVER start every response with the same greeting. Vary your openings naturally.
-- Reference earlier parts of the conversation when relevant. Use phrases like "like you mentioned earlier" or "building on what you said".
-- Avoid repetitive phrases and templates. Each response should feel unique and context-aware.
-- If the user asks follow-up questions, answer naturally without repeating context unnecessarily.
-- Use natural filler words and expressions (e.g. "well...", "so...", "actually...", "btw...") to sound human.
-- Ask clarifying questions only when genuinely needed. Don't over-clarify.
-- If you don't know something, say so directly instead of making excuses.
+- Start by acknowledging the user's input and what's on their mind. Show genuine interest in what they need help with.
+- Vary your opening phrases naturally. Don't always start with "Hey there!" or "Yo!"
+- Reference the specific message or question they're asking. Show you read and understood what they said.
+- Ask clarifying questions only when genuinely helpful and conversational - "What exactly are you looking for?" "Can you tell me more about..." "I'm curious about..."
+- Use simple, warm openings: "Good question...", "That's interesting...", "I see! So...", "What do you think about...", "I can help with that!"
+- Avoid robotic closings. End naturally based on context - "Let me know if you need anything else" vs "Hope that helps!" vs "Want to dive deeper into anything?"
+- Be concise for simple questions, detailed for complex topics.
+- Show personality and empathy - "I'm glad you asked me that!" vs "I'm here to help!"
+- Match the user's energy and tone.
+- Before responding, mentally verify: Does this answer their question? Is it accurate? Does it sound natural?
 
 TEACHING & TUTORING BEHAVIOR:
 - When asked to "teach", "explain", or when the user mentions studying/learning:
-  1. Act like a friendly, patient personal tutor (e.g. "Okay bro, let's understand this from a real-life example...").
+  1. Act like a friendly, patient personal tutor. Be encouraging and patient.
   2. Start from the simplest concept with relatable real-life examples or analogies.
-  3. Teach ONE concept at a time. Do NOT dump an entire textbook chapter or all formulas at once unless the user explicitly asks for "full revision notes" or "all important topics".
-  4. Use simple, natural language and clean markdown formatting with headings.
+  3. Teach ONE concept at a time. Don't dump everything at once unless asked.
+  4. Use simple, natural language and clean formatting.
   5. Explain formulas by defining what EVERY symbol means (e.g. F = force, m = mass, a = acceleration) and give a simple example.
-  6. End explanations with a short, friendly check question to test the student's understanding before moving ahead.
-  7. Adapt explanations according to the student's replies and level (especially Class 10 / high school topics).
+  6. End with a friendly check question to see if they understood before moving ahead.
+  7. Adapt to the student's level and pace.
 
-YOU CAN HELP WITH:
+WHAT YOU CAN HELP WITH:
 - General questions, Coding, Python, Learning & Studying, Computer tasks
 - Windows applications, Installed applications, Browsers, Websites
 - Files, Folders, Gmail, Long-term memory, Power commands, AI image generation
+- Basically, whatever you need help with on your computer
+- You are a desktop companion that can see the user's screen (when permitted) and help with on-screen tasks
 
 USER MEMORY:
 {get_context()}
@@ -805,7 +825,6 @@ def ask_gemini(prompt: str):
             model=GEMINI_MODEL,
             contents=prompt,
             config={"temperature": get_temperature()},
-            request_options={"timeout": 30},
         )
         answer = getattr(response, "text", "")
         return clean_text(answer)
@@ -925,11 +944,11 @@ def ask_ai(prompt: str):
     if not provider_chain:
         if not GEMINI_KEY and not GROQ_KEY:
             return (
-                "Brooo, I could not connect to my AI right now.\n\n"
+                "I'm not fully set up yet.\n\n"
                 "No API keys configured.\n\n"
                 "Please add a Gemini or Groq API key in Settings."
             )
-        return "Brooo, I could not connect to my AI right now."
+        return "I couldn't connect to my AI right now."
 
     backoff_base = 1.0
 
@@ -963,12 +982,12 @@ def ask_ai(prompt: str):
         )
 
     if not _check_internet(force_refresh=True):
-        return "Brooo, I couldn't connect to my AI right now. Internet connection unavailable."
+        return "I couldn't connect to my AI right now. Internet connection unavailable."
     if not GEMINI_KEY and not GROQ_KEY:
-        return "Brooo, I couldn't connect to my AI right now. No API keys configured."
+        return "I couldn't connect to my AI right now. No API keys configured."
 
     return (
-        "Brooo, I could not connect to my AI right now.\n\n"
+        "I couldn't connect to my AI right now.\n\n"
         "All AI providers failed. This could be due to:\n"
         "API quota, invalid keys, or network issues."
     )
@@ -1403,8 +1422,8 @@ def handle_memory(text: str):
         try:
             memories = get_memories()
             if not memories:
-                return "Brooo, I don't have any saved memories yet 🧠"
-            return "Here is what I remember:\n\n" + "\n".join(
+                return "I don't have any saved memories yet."
+            return "Here's what I remember:\n\n" + "\n".join(
                 f"• {memory}" for memory in memories
             )
         except Exception as error:
@@ -1420,7 +1439,7 @@ def handle_memory(text: str):
     if any(phrase in lower for phrase in clear_phrases):
         try:
             clear_memories()
-            return "Done brooo, I cleared all saved memories 🧠"
+            return "Done! I cleared all saved memories."
         except Exception as error:
             print("[Memory Clear Error]", error)
             return "I couldn't clear your memories."
@@ -1438,10 +1457,10 @@ def handle_memory(text: str):
             flags=re.IGNORECASE,
         ).strip()
         if not memory:
-            return "Brooo, what should I remember? 🤔"
+            return "What should I remember?"
         try:
             add_memory(memory)
-            return f"Got it brooo, I'll remember: {memory} 🧠"
+            return f"Got it, I'll remember: {memory}"
         except Exception as error:
             print("[Memory Save Error]", error)
             return "I couldn't save that memory."
@@ -1528,7 +1547,7 @@ def handle_image_generation(text: str):
         return None
     prompt = extract_image_prompt(text)
     if not prompt:
-        return "Brooo, tell me what image you want me to generate 🎨"
+        return "Tell me what image you want me to generate."
     try:
         print("[AI] Generating image:", prompt)
         result = generate_image(prompt)
@@ -1537,10 +1556,10 @@ def handle_image_generation(text: str):
             return normalized
         if isinstance(result, dict):
             return result
-        return "Brooo, the image generator did not return a valid image 😭"
+        return "The image generator did not return a valid image."
     except Exception as error:
         print("[Image Generation Error]", error)
-        return "Brooo, image generation failed 😭"
+        return "Image generation failed."
 
 
 def _handle_image_understanding(message: str, images: list[dict]):
@@ -1575,7 +1594,6 @@ def _handle_image_understanding(message: str, images: list[dict]):
                 model=GEMINI_MODEL,
                 contents=parts,
                 config={"temperature": get_temperature()},
-                request_options={"timeout": 60},
             )
             answer = getattr(response, "text", "")
             if answer:
@@ -2398,7 +2416,7 @@ def handle_email(text: str):
             count = get_setting("gmail.recent_email_count", 5)
             emails = get_recent_emails(count)
             if not emails:
-                return "Brooo, you don't have any recent emails 📧"
+                return "You don't have any recent emails."
             return "\n\n".join(f"📧 {email}" for email in emails)
         except Exception as error:
             print("[Gmail Error]", error)
@@ -2413,7 +2431,7 @@ def handle_email(text: str):
             r"search (my )?(emails|gmail)", "", text, flags=re.IGNORECASE
         ).strip()
         if not query:
-            return "Brooo, what should I search for in your emails? 📧"
+            return "What should I search for in your emails?"
         try:
             results = search_emails(query)
             if not results:
@@ -2694,7 +2712,7 @@ def handle_system(message: str) -> str | None:
 
             return get_ram_info()
         except Exception as e:
-            return f"Brooo, couldn't fetch RAM info 😭\n{e}"
+            return f"Couldn't fetch RAM info 😭\n{e}"
     if any(
         k in lower for k in ["cpu usage", "cpu info", "processor info", "cpu status"]
     ):
@@ -2703,7 +2721,7 @@ def handle_system(message: str) -> str | None:
 
             return f"{get_cpu_info()}\n{get_cpu_usage()}"
         except Exception as e:
-            return f"Brooo, couldn't fetch CPU info 😭\n{e}"
+            return f"Couldn't fetch CPU info 😭\n{e}"
     if any(
         k in lower for k in ["gpu info", "graphics card", "gpu status", "graphics info"]
     ):
@@ -2712,7 +2730,7 @@ def handle_system(message: str) -> str | None:
 
             return get_gpu_info()
         except Exception as e:
-            return f"Brooo, couldn't fetch GPU info 😭\n{e}"
+            return f"Couldn't fetch GPU info 😭\n{e}"
     if any(
         k in lower
         for k in [
@@ -2729,7 +2747,7 @@ def handle_system(message: str) -> str | None:
 
             return get_storage_info()
         except Exception as e:
-            return f"Brooo, couldn't fetch Storage info 😭\n{e}"
+            return f"Couldn't fetch Storage info 😭\n{e}"
     if any(
         k in lower
         for k in ["battery status", "battery level", "battery info", "how much battery"]
@@ -2739,7 +2757,7 @@ def handle_system(message: str) -> str | None:
 
             return get_battery_status()
         except Exception as e:
-            return f"Brooo, couldn't fetch Battery info 😭\n{e}"
+            return f"Couldn't fetch Battery info 😭\n{e}"
     if any(
         k in lower
         for k in [
@@ -2754,7 +2772,7 @@ def handle_system(message: str) -> str | None:
 
             return get_full_system_status()
         except Exception as e:
-            return f"Brooo, couldn't fetch System status 😭\n{e}"
+            return f"Couldn't fetch System status 😭\n{e}"
     if any(
         k in lower
         for k in [
@@ -2770,7 +2788,7 @@ def handle_system(message: str) -> str | None:
 
             return get_current_time()
         except Exception as e:
-            return f"Brooo, couldn't fetch time 😭\n{e}"
+            return f"Couldn't fetch time 😭\n{e}"
     if any(
         k in lower for k in ["take screenshot", "take a screenshot", "capture screen"]
     ):
@@ -2779,18 +2797,101 @@ def handle_system(message: str) -> str | None:
 
             return take_screenshot()
         except Exception as e:
-            return f"Brooo, couldn't take screenshot 😭\n{e}"
-    if any(
-        k in lower
-        for k in ["lock computer", "lock my pc", "lock screen", "lock laptop"]
-    ):
-        try:
-            from skills.system import lock_computer
-
-            return lock_computer()
-        except Exception as e:
-            return f"Brooo, couldn't lock PC 😭\n{e}"
+            return f"Couldn't take screenshot 😭\n{e}"
     return None
+
+
+# ============================================================
+# SCREEN ANALYSIS HANDLER
+# ============================================================
+
+
+def handle_screen_analysis(message: str) -> str | None:
+    """Handle screen analysis commands using real multimodal vision.
+
+    Flow: capture actual screen -> send image+prompt to Gemini vision
+          -> return visual description. Falls back to heuristic only if
+          vision unavailable/capture fails, with honest messaging.
+    """
+    try:
+        from vision_engine import VisionEngine
+
+        engine = VisionEngine()
+        if not engine.is_available():
+            return "Screen capture isn't available on this system. I need screen permission to see what's on your display."
+
+        # Try real vision: capture screenshot and ask vision AI
+        screenshot = engine.capture_screen()
+        if screenshot is not None and gemini is not None:
+            try:
+                import base64
+                import io
+
+                buf = io.BytesIO()
+                screenshot.save(buf, format="PNG")
+                b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                vision_result = _handle_image_understanding(
+                    message,
+                    [{"type": "image", "data": b64, "mime": "image/png"}],
+                )
+                if vision_result:
+                    # If vision returned a real analysis, use it directly
+                    # Add window context as supplement for accuracy
+                    analysis = engine.analyze()
+                    prefix = ""
+                    if analysis.window_title:
+                        prefix = f"[Window: {analysis.window_title} — {analysis.active_app}] "
+                    return prefix + vision_result
+            except Exception as e:
+                logger.debug(f"Vision multimodal failed, falling back to heuristic: {e}")
+
+        # Capture failed or Gemini vision unavailable: try heuristic with honest label
+        try:
+            analysis = engine.analyze(force=True)
+        except Exception as e:
+            logger.debug(f"Screen analysis fallback error: {e}")
+            return "I tried to capture your screen but couldn't access it. Please check screen permissions."
+
+        if analysis.error:
+            logger.debug(f"Screen analysis error: {analysis.error}")
+            return "I had trouble capturing your screen. Please try again."
+
+        # Heuristic fallback — explicitly note it's not direct visual analysis
+        parts = []
+        if analysis.window_title:
+            app_name = analysis.active_app or analysis.window_title
+            parts.append(f"You seem to be using {app_name}.")
+        activity_map = {
+            "coding": "coding",
+            "browsing": "browsing",
+            "gaming": "gaming",
+            "studying": "studying",
+            "working": "working",
+            "idle": "idle",
+        }
+        activity = analysis.activity_type
+        if activity in activity_map:
+            activity_name = activity_map[activity]
+            if activity_name != "idle":
+                parts.append(f"You appear to be {activity_name}.")
+        visible_text = analysis.visible_text
+        if visible_text:
+            lines = visible_text.split("\n")[:3]
+            text_items = []
+            for line in lines:
+                line = line.strip()
+                if line and len(line) > 3:
+                    text_items.append(line[:50])
+            if text_items:
+                parts.append("I can see: " + ", ".join(text_items) + ".")
+        if not parts:
+            return "I captured your screen but couldn't determine what you're doing. Try asking with an attached screenshot for detailed analysis."
+        # Honest fallback note
+        return " ".join(parts) + " (Heuristic analysis — detailed vision unavailable right now.)"
+
+    except Exception as e:
+        logger.debug(f"Screen analysis handler error: {e}")
+        return "I had trouble accessing your screen. Please check permissions and try again."
 
 
 # ============================================================
@@ -2801,7 +2902,7 @@ def handle_system(message: str) -> str | None:
 def process_message(user_message: str, attachments: list[dict] | None = None):
     user_message = clean_text(user_message)
     if not user_message and not attachments:
-        return "Brooo, say something 😄"
+        return "Hey! I'm here whenever you're ready to talk 😊"
 
     if attachments:
         image_attachments = [a for a in attachments if a.get("type") == "image"]
@@ -2810,40 +2911,68 @@ def process_message(user_message: str, attachments: list[dict] | None = None):
                 return _handle_image_understanding(user_message, image_attachments)
             except Exception as e:
                 print("[IMAGE UNDERSTANDING ERROR]", e)
-                return "Brooo 😭 I had trouble understanding that image. Can you try again?"
+                return "I had trouble understanding that image. Can you try again?"
 
     # ============================================================
-    # INTERNAL ANALYSIS PIPELINE
+    # INTERNAL ANALYSIS PIPELINE (+ emotional continuity persistence)
     # ============================================================
+    # Update persistent emotional state before analysis so both the
+    # lightweight _analyze_user_input emotion and the AI prompt carry
+    # continuity across restarts. Never blocks the main flow.
+    try:
+        from emotional_continuity import get_emotion_engine
+        get_emotion_engine().process_user_message(user_message)
+    except Exception:
+        pass
     analysis = _analyze_user_input(user_message)
 
     # ============================================================
     # GREETING SHORT-CIRCUIT (only for obvious greetings)
     # ============================================================
     lower_msg = user_message.lower().strip()
-    simple_greetings = ["hi", "hello", "hey", "yo", "sup", "what's up", "whats up"]
+    simple_greetings = ["hi", "hello", "hey", "yo", "sup", "what's up", "whats up", "heya", "hiya", "hi there", "hello there", "hey there", "good morning", "good afternoon", "good evening"]
+
+    from datetime import datetime
+    _hour = datetime.now().hour
+    if 5 <= _hour < 12:
+        time_word = "morning"
+        time_emoji = "🌅"
+    elif 12 <= _hour < 17:
+        time_word = "afternoon"
+        time_emoji = "☀️"
+    elif 17 <= _hour < 22:
+        time_word = "evening"
+        time_emoji = "🌙"
+    else:
+        time_word = "night"
+        time_emoji = "🌙"
+
     if lower_msg in simple_greetings and analysis["intent"] == "conversation":
-        from datetime import datetime
-
-        current_hour = datetime.now().hour
-        if 5 <= current_hour < 12:
-            greeting = "Good morning"
-        elif 12 <= current_hour < 17:
-            greeting = "Good afternoon"
-        elif 17 <= current_hour < 21:
-            greeting = "Good evening"
-        else:
-            greeting = "Hey"
-
-        responses = [
-            f"{greeting}! What's on your mind?",
-            f"{greeting}! How can I help you today?",
-            f"Hey there! {greeting}! What's up?",
-            f"{greeting}! Ready to help with whatever you need.",
-        ]
         import random
+        time_lower = lower_msg
+        is_time_specific = any(g in time_lower for g in ["morning", "afternoon", "evening"])
 
-        response = random.choice(responses)
+        if is_time_specific:
+            greeting_responses = [
+                f"Good {time_word}! {time_emoji} What's on your mind today?",
+                f"Good {time_word}! Hope your day's going well. What can I help with?",
+                f"Good {time_word}! 👋 What's up?",
+                f"Hey, good {time_word}! What are you up to?",
+            ]
+        else:
+            greeting_responses = [
+                "Hey! What's on your mind today?",
+                "Hi there! What can I help you with?",
+                "Hey! How's it going?",
+                "Hello! What's happening today?",
+                "Hi! Anything I can help you figure out?",
+                "Hey! What are we working on?",
+                "Hi! What brings you here?",
+                "Hey! Good to see you. What's up?",
+                "Hello! What's the plan for today?",
+                "Hi! How can I make your day easier?",
+            ]
+        response = random.choice(greeting_responses)
         add_to_history("user", user_message)
         add_to_history("assistant", response)
         return response
@@ -2907,6 +3036,29 @@ def process_message(user_message: str, attachments: list[dict] | None = None):
                     return result
             except Exception as error:
                 print(f"[{handler.__name__} Error]", error)
+
+    # ============================================================
+    # SCREEN ANALYSIS HANDLING
+    # ============================================================
+    lower_msg = user_message.lower().strip()
+    screen_phrases = [
+        "see my screen",
+        "look at my screen",
+        "what am i doing",
+        "what is on my screen",
+        "what's on my screen",
+        "whats on my screen",
+        "tell me what i'm doing",
+        "tell me what i am doing",
+        "describe my screen",
+        "what do you see",
+        "can you see my screen",
+    ]
+    if any(phrase in lower_msg for phrase in screen_phrases):
+        result = handle_screen_analysis(user_message)
+        if result:
+            add_to_history("assistant", result)
+            return result
 
     # ============================================================
     # MULTI-STEP REQUEST HANDLING
@@ -3045,7 +3197,7 @@ def process_message(user_message: str, attachments: list[dict] | None = None):
     # Clarification guidance
     clarification_guidance = ""
     if analysis["needs_clarification"]:
-        clarification_guidance = "\n[NEEDS CLARIFICATION: Ask ONE concise clarifying question. Do not guess.]"
+        clarification_guidance = "\n[NEEDS CLARIFICATION: Ask ONE natural, conversational question to understand better.]"
 
     prompt = f"""
 {get_system_prompt()}
@@ -3087,9 +3239,14 @@ RESPONSE GUIDELINES:
     if answer:
         answer = clean_ai_reply(answer)
         add_to_history("assistant", answer)
+        try:
+            from emotional_continuity import get_emotion_engine
+            get_emotion_engine().on_ai_response(answer)
+        except Exception:
+            pass
         return answer
 
-    return "Brooo, I couldn't generate a response right now 😭"
+    return "I couldn't generate a response right now."
 
 
 # ============================================================

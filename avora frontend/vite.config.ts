@@ -6,9 +6,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      // Forward analytics API calls to the real analytics server (default :8787)
+      // Forward all /api calls to the AVORA backend (default :3000). Can be overridden with VITE_ANALYTICS_PROXY.
       '/api': {
-        target: process.env.VITE_ANALYTICS_PROXY || 'http://localhost:8787',
+        target: process.env.VITE_ANALYTICS_PROXY || 'http://localhost:3000',
         changeOrigin: true,
       },
     },

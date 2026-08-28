@@ -33,6 +33,21 @@ export function Downloads() {
   const [showRequirements, setShowRequirements] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState<boolean>(true);
 
+  // Network monitoring
+  const setupNetworkMonitoring = useCallback(() => {
+    const updateNetworkStatus = () => {
+      setNetworkStatus(navigator.onLine ? 'online' : 'offline');
+    };
+    
+    window.addEventListener('online', updateNetworkStatus);
+    window.addEventListener('offline', updateNetworkStatus);
+    
+    return () => {
+      window.removeEventListener('online', updateNetworkStatus);
+      window.removeEventListener('offline', updateNetworkStatus);
+    };
+  }, []);
+
   // Initialize platform detection
   useEffect(() => {
     const init = async () => {
@@ -57,22 +72,7 @@ export function Downloads() {
     };
     
     init();
-  }, []);
-
-  // Network monitoring
-  const setupNetworkMonitoring = useCallback(() => {
-    const updateNetworkStatus = () => {
-      setNetworkStatus(navigator.onLine ? 'online' : 'offline');
-    };
-    
-    window.addEventListener('online', updateNetworkStatus);
-    window.addEventListener('offline', updateNetworkStatus);
-    
-    return () => {
-      window.removeEventListener('online', updateNetworkStatus);
-      window.removeEventListener('offline', updateNetworkStatus);
-    };
-  }, []);
+  }, [setupNetworkMonitoring]);
 
   // Platform detection helper
   const isPlatformSupported = (platform: any): boolean => {

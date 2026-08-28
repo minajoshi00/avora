@@ -344,13 +344,29 @@ class ScreenAwareness:
         try:
             if not is_companion_enabled():
                 return
+            # Respect DND and calm quiet behavior — never proactive-bubble during quiet time
+            from settings import get_setting
+            if get_setting("notifications.do_not_disturb", False):
+                return
+            if get_setting("personality.current_personality", "") == "calm_companion":
+                # Calm companion is intentionally low-frequency — double cooldown
+                if time.time() - self._last_proactive_time < self._proactive_cooldown * 2:
+                    return
+            if not get_setting("companion.proactive_messages", True):
+                return
         except Exception:
-            return
+            pass
         
         # Check cooldown
         now = time.time()
         if now - self._last_proactive_time < self._proactive_cooldown:
             return
+        # Suppress while user is actively interacting (prevents spam during chat)
+        try:
+            if getattr(main_window, 'is_processing', False) or getattr(main_window, 'is_listening', False):
+                return
+        except Exception:
+            pass
         
         # Get main window
         main_window = self._main_window

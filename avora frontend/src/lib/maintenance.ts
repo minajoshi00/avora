@@ -29,39 +29,18 @@ export async function getMaintenanceStatus(): Promise<{ maintenanceMode: boolean
 	}
 }
 
-/**
- * Toggle the maintenance mode.
- *
- * Requires admin password validation.
- * The password is validated against the expected value provided by the caller.
- *
- * @param expectedPassword - The admin password to validate against (from MAINTENANCE_ADMIN_PASSWORD env var)
- * @returns maintenanceMode: the new maintenance mode state.
- * @returns error: if the toggle fails or authentication fails.
- */
 export async function toggleMaintenance(
-	options?: { expectedPassword?: string; password?: string }
+	password: string
 ): Promise<{ maintenanceMode: boolean; error?: string }> {
 	try {
-		const expectedPassword = options?.expectedPassword;
-		const password = options?.password;
-
-		if (!expectedPassword || !password) {
-			return { maintenanceMode: false, error: 'Missing password parameters.' };
-		}
-
-		// Validate password against expected value
-		if (password !== expectedPassword) {
-			return { maintenanceMode: false, error: 'Unauthorized. Invalid admin password.' };
-		}
-
-		const res = await fetch('/api/admin/maintenance', {
+		const res = await fetch('/api/admin/maintenance/toggle', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ password }),
 		});
 		if (!res.ok) {
-			return { maintenanceMode: false, error: 'Failed to toggle maintenance mode' };
+			const data = await res.json().catch(() => ({}));
+			return { maintenanceMode: false, error: data.error || 'Failed to toggle maintenance mode' };
 		}
 		const data = await res.json();
 		return { maintenanceMode: data?.maintenanceMode === true || data?.maintenanceMode === 'true' };

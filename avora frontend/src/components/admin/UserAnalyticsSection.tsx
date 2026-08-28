@@ -188,16 +188,23 @@ export function UserAnalyticsSection() {
   );
 }
 
+const statColorMap: Record<string, { bg: string; border: string; text: string }> = {
+  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400' },
+  purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-400' },
+  emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
+  yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', text: 'text-yellow-400' },
+};
 function StatCard({
   icon: Icon, color, label, value, delta,
 }: {
   icon: typeof Users; color: string; label: string; value: string; delta?: { text: string; positive: boolean };
 }) {
+  const cm = statColorMap[color] || statColorMap.blue;
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
       <div className="flex items-center gap-3 mb-3">
-        <div className={`p-2 rounded-lg bg-${color}-500/10 border border-${color}-500/20`}>
-          <Icon size={16} className={`text-${color}-400`} />
+        <div className={`p-2 rounded-lg ${cm.bg} border ${cm.border}`}>
+          <Icon size={16} className={cm.text} />
         </div>
         <p className="text-xs text-gray-500">{label}</p>
       </div>

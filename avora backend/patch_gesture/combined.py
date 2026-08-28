@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 
 PATH = r'c:\Users\HP\OneDrive\Desktop\avora\avora backend\character.py'
 

@@ -227,7 +227,7 @@ export class PlatformDetector {
       const canvas = document.createElement('canvas');
       const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
       return !!gl;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -237,7 +237,8 @@ export class PlatformDetector {
       if (typeof WebAssembly === 'object' && WebAssembly.validate) {
         return WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
       }
-    } catch (e) {}
+    } catch {
+    }
     
     return false;
   }

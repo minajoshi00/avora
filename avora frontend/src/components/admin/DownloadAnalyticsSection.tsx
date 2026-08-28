@@ -119,6 +119,7 @@ export function DownloadAnalyticsSection() {
   );
 }
 
+const dlColorMap: Record<string, string> = { blue: 'text-blue-400', purple: 'text-purple-400', emerald: 'text-emerald-400', yellow: 'text-yellow-400' };
 function StatCard({
   icon: Icon, color, label, value, delta,
 }: {
@@ -127,7 +128,7 @@ function StatCard({
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-4">
       <div className="flex items-center gap-2 mb-1">
-        <Icon size={14} className={`text-${color}-400`} />
+        <Icon size={14} className={dlColorMap[color] || 'text-blue-400'} />
         <p className="text-xs text-gray-500">{label}</p>
       </div>
       <p className="text-xl font-bold text-white">{value}</p>

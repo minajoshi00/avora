@@ -1,9 +1,13 @@
 """
-===============================================================
-                    AVORA AI THEME SYSTEM v1.0
-===============================================================
+==============================================================
+                    AVORA AI THEME SYSTEM v2.0
+==============================================================
 
+ChatGPT-inspired design system with modern, clean aesthetics.
 Centralized design token system with Light Mode, Dark Mode, and System Mode.
+
+Dark mode features a deep navy/black base with subtle blue/purple ambient
+glow and AVORA's signature green accent — premium and cinematic.
 
 Usage from any widget:
 
@@ -11,9 +15,9 @@ Usage from any widget:
 
     current = get_current_theme()
 
-    current["background"]["primary"]   -> "#0B0B12"
-    current["surface"]["card"]         -> "#111827"
-    current["text"]["primary"]         -> "#F5F5F5"
+    current["background"]["primary"]   -> "#030703"
+    current["surface"]["card"]         -> "#0A1A0A"
+    current["text"]["primary"]         -> "#E6FFEC"
 
     # Or in stylesheets:
 
@@ -99,7 +103,7 @@ LIGHT_THEME: Dict[str, Any] = {
         "info_bg": "#DBEAFE",
     },
 
-    # ── Button colors are derived from accent above; keep placeholders
+    # ── Button colors ───────────────────────────────────────────
     "button": {
         "primary_bg":       "#7B61FF",
         "primary_hover":    "#9478FF",
@@ -115,6 +119,17 @@ LIGHT_THEME: Dict[str, Any] = {
         "danger_text":      "#FFFFFF",
         "disabled_bg":      "#E4E4EC",
         "disabled_text":    "#A0A3B1",
+    },
+
+    # ── Chat-specific (Light) ───────────────────────────────────
+    "chat": {
+        "user_bubble":   "#7B61FF",
+        "user_text":     "#FFFFFF",
+        "ai_bubble":     "#F7F7FA",
+        "ai_border":     "#D4D4DC",
+        "ai_text":       "#1A1D2B",
+        "code_bg":       "#F3F4F6",
+        "typing_indicator":"#8C8F99",
     },
 
     # ── Shadows ─────────────────────────────────────────────────
@@ -516,11 +531,10 @@ def generate_qss() -> str:
     }}
 
     #HeaderTitle {{
-        font-size: 18px;
+        font-size: 15px;
         font-weight: 700;
         color: rgba(230, 255, 236, 0.6);
         letter-spacing: 1.5px;
-        text-shadow: 0 0 12px rgba(0, 255, 136, 0.25);
     }}
 
     #HudStatus {{
@@ -551,28 +565,28 @@ def generate_qss() -> str:
 
     #UserBubble {{
         background-color: {ch["user_bubble"]};
-        border-radius: 18px;
-        padding: 12px 16px;
+        border-radius: 14px;
+        padding: 9px 14px;
         font-size: 14px;
-        line-height: 1.5;
+        line-height: 1.45;
         color: {ch["user_text"]};
     }}
 
     #AIBubble {{
         background-color: {ch["ai_bubble"]};
         border: 1px solid {ch["ai_border"]};
-        border-radius: 18px;
-        padding: 12px 16px;
+        border-radius: 14px;
+        padding: 10px 14px;
         font-size: 14px;
-        line-height: 1.6;
+        line-height: 1.55;
         color: {ch["ai_text"]};
     }}
 
     #ImageBubble {{
         background-color: {ch["ai_bubble"]};
         border: 1px solid {ch["ai_border"]};
-        border-radius: 16px;
-        padding: 12px 16px;
+        border-radius: 12px;
+        padding: 8px 12px;
     }}
 
     #Typing {{
@@ -587,7 +601,8 @@ def generate_qss() -> str:
     #InputContainer {{
         background-color: {s["input"]};
         border: 1px solid {br["default"]};
-        border-radius: 20px;
+        border-radius: 24px;
+        padding: 4px;
     }}
 
     #InputContainer:focus-within {{
@@ -600,7 +615,7 @@ def generate_qss() -> str:
         border: none;
         color: {tx["primary"]};
         font-size: 15px;
-        padding: 12px 10px;
+        padding: 10px 12px;
         selection-background-color: {a["muted"]};
         selection-color: {tx["primary"]};
     }}
@@ -621,7 +636,7 @@ def generate_qss() -> str:
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
             stop:0 #00CC6A, stop:1 #00FF88);
         border: none;
-        border-radius: 14px;
+        border-radius: 16px;
         color: {bt["primary_text"]};
         font-size: 18px;
         font-weight: 700;
@@ -645,7 +660,7 @@ def generate_qss() -> str:
     #MicButton {{
         background-color: {s["input"]};
         border: 1px solid {br["default"]};
-        border-radius: 13px;
+        border-radius: 16px;
         color: {tx["secondary"]};
         font-size: 18px;
     }}

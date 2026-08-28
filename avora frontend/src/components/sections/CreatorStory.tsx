@@ -163,9 +163,9 @@ export function CreatorStory() {
   return (
     <section className="relative py-32 overflow-hidden" id="developer">
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full bg-blue-500/5 blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full bg-purple-500/5 blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-cyan-500/3 blur-3xl" />
+        <div className="absolute top-0 left-1/4 w-[min(600px,92vw)] h-[min(600px,92vw)] rounded-full bg-blue-500/5 blur-3xl avora-drift" />
+        <div className="absolute bottom-1/4 right-1/4 w-[min(500px,88vw)] h-[min(500px,88vw)] rounded-full bg-purple-500/5 blur-3xl avora-drift" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(400px,80vw)] h-[min(400px,80vw)] rounded-full bg-cyan-500/3 blur-3xl avora-drift" />
       </div>
 
       <div className="max-w-6xl mx-auto px-6 relative z-10">

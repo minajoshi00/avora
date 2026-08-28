@@ -102,10 +102,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # =========================================================
 
     "voice": {
-        "enabled": True,
+        "enabled": False,
         "volume": 1.0,
         "speed": 1.0,
-        "voice_name": "default",
+        "voice_name": "en-US-AriaNeural",
 
         # Speak only after the entire AI response is complete
         "speak_after_response": True,
@@ -559,7 +559,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # =========================================================
 
     "personality": {
-        "current_personality": "friendly",
+        "current_personality": "friendly_bro",
 
         "friendly_bro": {
             "name": "Friendly Bro",

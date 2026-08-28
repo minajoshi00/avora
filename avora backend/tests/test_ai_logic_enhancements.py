@@ -1,5 +1,16 @@
+import pytest
+from PySide6.QtWidgets import QApplication
+
 from ai_logic import classify_request, extract_image_prompt
 from character import Character
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    yield app
 
 
 def test_classify_weather_request():
@@ -23,8 +34,14 @@ def test_extract_image_prompt_removes_command_words():
     assert "Generate" not in prompt
 
 
-def test_character_react_updates_expression_and_notification():
+def test_character_react_updates_expression_and_notification(qapp):
     widget = Character()
+    widget.show()
+    qapp.processEvents()
     widget.react("email_received", {"message": "You have a new message"})
+    qapp.processEvents()
     assert widget.current_event == "email_received"
     assert widget.notification_label.isVisible()
+    widget.close()
+    widget.deleteLater()
+    qapp.processEvents()

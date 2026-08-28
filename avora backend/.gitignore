@@ -48,6 +48,7 @@ build/
 generated_images/
 
 # --- User Data ---
+settings.json
 settings_backups/
 conversations.json
 memories.json
