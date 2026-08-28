@@ -363,6 +363,7 @@ class CompanionSpeechBubble(QWidget):
         self._target_opacity = 0.0
         self._hide_timer = None
         self._fade_anim = None
+        self._fade_connected = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -444,14 +445,20 @@ class CompanionSpeechBubble(QWidget):
 
     def hide_bubble(self):
         if self._fade_anim is not None:
-            try:
-                self._fade_anim.finished.disconnect(self._do_hide)
-            except Exception:
-                pass
+            # Only disconnect if the receiver is actually connected.
+            # Disconnecting a non-connected receiver makes PySide emit an
+            # un-catchable RuntimeWarning ("Failed to disconnect ...").
+            if self._fade_connected:
+                try:
+                    self._fade_anim.finished.disconnect(self._do_hide)
+                except Exception:
+                    pass
+                self._fade_connected = False
             self._fade_anim.stop()
             self._fade_anim.setStartValue(self.windowOpacity())
             self._fade_anim.setEndValue(0.0)
             self._fade_anim.finished.connect(self._do_hide)
+            self._fade_connected = True
             self._fade_anim.start()
         else:
             self._do_hide()
@@ -690,11 +697,11 @@ class CompanionBehaviorController:
         hour = now.hour
         time_greeting = "Hey"
         if 5 <= hour < 12:
-            time_greeting = "Morning"
+            time_greeting = "Good morning"
         elif 12 <= hour < 17:
-            time_greeting = "Afternoon"
+            time_greeting = "Good afternoon"
         elif 17 <= hour < 22:
-            time_greeting = "Evening"
+            time_greeting = "Good evening"
 
         observation = None
         if self.companion:
@@ -719,7 +726,7 @@ class CompanionBehaviorController:
             
             # Context-aware greetings based on what they're doing
             if activity_str == "coding":
-                return f"{time_greeting} bro! 👋 Hope the coding's going well."
+                return f"{time_greeting}! 👋 Hope the coding's going well."
             elif activity_str == "studying":
                 return f"Hey! 😊 How's the studying going?"
             elif activity_str == "gaming":
@@ -732,7 +739,7 @@ class CompanionBehaviorController:
                 return f"{time_greeting}! How's the design work going?"
 
         # Default greeting - simple and friendly
-        return f"{time_greeting} bro! 👋 Good to see you."
+        return f"{time_greeting}! 👋 Good to see you."
 
     # =========================================================
     # NOTIFICATIONS

@@ -102,10 +102,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # =========================================================
 
     "voice": {
-        "enabled": True,
+        "enabled": False,
         "volume": 1.0,
         "speed": 1.0,
-        "voice_name": "default",
+        "voice_name": "en-US-AriaNeural",
 
         # Speak only after the entire AI response is complete
         "speak_after_response": True,
@@ -559,7 +559,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # =========================================================
 
     "personality": {
-        "current_personality": "friendly",
+        "current_personality": "friendly_bro",
 
         "friendly_bro": {
             "name": "Friendly Bro",
@@ -893,6 +893,27 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         "intensity_multiplier": 1.0,
 
         "detailed_analysis_interval_seconds": 60,
+    },
+
+
+    # =========================================================
+    # COMPANION WIDGET
+    # =========================================================
+
+    "companion_widget": {
+        "enabled": True,
+
+        "size": 1.0,
+
+        "glow_intensity": 0.5,
+
+        "glow_color": "#00FF88",
+
+        "animation": "gentle_float",
+
+        "position_x": -1,
+
+        "position_y": -1,
     },
 
 

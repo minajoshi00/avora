@@ -1,18 +1,19 @@
 """
 ============================================================
-AVORA Core Module
+AVORA Core Module — INTERNAL / EXPERIMENTAL
 ============================================================
 
 Core system components for the AVORA AI desktop companion.
 
-Modules:
-- intelligence_engine: Main request processing pipeline
-- context_engine: Desktop context collection
-- memory_engine: Multi-tier memory management
-- reasoning_engine: Understanding and planning
-- action_planner: Multi-step action planning
-- health_monitor: System health monitoring
-- recovery_manager: Crash recovery system
+Active runtime paths (verified wired):
+- context_engine + context_provider: via ai_logic.get_context()
+- companion_intelligence + activity_monitor + screen_awareness: via main.py
+
+Internal/experimental (not wired to main ai_logic pipeline;
+do NOT claim as active user-facing features without integration):
+- intelligence_engine / avora_intelligence: alternative pipeline (duplicates ai_logic)
+- health_monitor / recovery_manager / provider_abstraction: diagnostic helpers
+Keep these internal until explicitly integrated and tested.
 """
 
 from core.intelligence_engine import (

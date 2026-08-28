@@ -2,6 +2,10 @@
 .env
 .env.*
 !.env.example
+avora\ backend/.env
+avora backend/.env
+avora_desktop/.env
+desktop/.env
 
 # Dependencies
 node_modules/

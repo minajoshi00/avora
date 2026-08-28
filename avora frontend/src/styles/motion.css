@@ -1,0 +1,68 @@
+/* AVORA Motion Utilities — reused site-wide, GPU-only, reduced-motion aware */
+
+/* Floating — gentle vertical drift for visuals */
+@keyframes avora-float {
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -8px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+.avora-float {
+  animation: avora-float 6s ease-in-out infinite;
+  will-change: transform;
+}
+.avora-float--slow { animation-duration: 8s; }
+.avora-float--fast { animation-duration: 4.5s; }
+
+/* Subtle glow pulse */
+@keyframes avora-glowPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.03); }
+}
+.avora-glow {
+  animation: avora-glowPulse 4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+/* Section reveal — for non-motion fallbacks if needed */
+.reveal-up {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
+}
+.reveal-up.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Hover lift — GPU */
+.hover-lift {
+  transition: transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s ease, border-color 0.25s ease;
+  will-change: transform;
+}
+.hover-lift:hover {
+  transform: translateY(-4px) scale(1.01);
+}
+
+/* Stagger helper — children get delay via inline style, not needed if using framer stagger */
+
+/* Continuous drift for decorative orbs (CSS version for sections without canvas) */
+@keyframes avora-drift-a {
+  0% { transform: translate3d(0,0,0) scale(1); }
+  50% { transform: translate3d(1.2vw, 1vh,0) scale(1.04); }
+  100% { transform: translate3d(-0.8vw, 0.6vh,0) scale(1.02); }
+}
+.avora-drift {
+  animation: avora-drift-a 18s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avora-float,
+  .avora-glow,
+  .avora-drift,
+  .reveal-up {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}

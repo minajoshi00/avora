@@ -7,8 +7,8 @@ export function CTA() {
     <section className="relative py-32 overflow-hidden">
       {/* Background effects */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-blue-500/3 blur-3xl" />
-        <div className="absolute top-0 right-1/4 w-[300px] h-[300px] rounded-full bg-purple-500/3 blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(600px,92vw)] h-[min(600px,92vw)] rounded-full bg-blue-500/3 blur-3xl" />
+        <div className="absolute top-0 right-1/4 w-[min(300px,70vw)] h-[min(300px,70vw)] rounded-full bg-purple-500/3 blur-3xl" />
       </div>
 
       <div className="max-w-4xl mx-auto px-6 text-center relative z-10">

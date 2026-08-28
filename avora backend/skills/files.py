@@ -309,7 +309,7 @@ def read_file(
     if not file_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "a file path 📄"
         )
 
@@ -322,7 +322,7 @@ def read_file(
     if not file_path.exists():
 
         return (
-            f"Brooo, I couldn't find this file:\n"
+            f"I couldn't find this file:\n"
             f"{file_path}"
         )
 
@@ -330,7 +330,7 @@ def read_file(
     if not file_path.is_file():
 
         return (
-            "Brooo, that is not a file 📁"
+            "that is not a file 📁"
         )
 
 
@@ -348,7 +348,7 @@ def read_file(
         if not content.strip():
 
             return (
-                "Brooo, this file is empty 📄"
+                "this file is empty 📄"
             )
 
 
@@ -358,7 +358,7 @@ def read_file(
     except UnicodeDecodeError:
 
         return (
-            "Brooo, I can't read this file "
+            "I can't read this file "
             "as a text file. "
             "It may be a binary file 📦"
         )
@@ -367,7 +367,7 @@ def read_file(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't read the file 😭\n"
+            f"I couldn't read the file 😭\n"
             f"{error}"
         )
 
@@ -399,7 +399,7 @@ def open_file(
     if not file_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "a file path 📄"
         )
 
@@ -412,7 +412,7 @@ def open_file(
     if not file_path.exists():
 
         return (
-            f"Brooo, I couldn't find:\n"
+            f"I couldn't find:\n"
             f"{file_path}"
         )
 
@@ -447,7 +447,7 @@ def open_file(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't open "
+            f"I couldn't open "
             f"the file 😭\n"
             f"{error}"
         )
@@ -481,7 +481,7 @@ def create_file(
     if not file_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "a file name 📄"
         )
 
@@ -494,7 +494,7 @@ def create_file(
     if file_path.exists():
 
         return (
-            "Brooo, that file already exists 😅"
+            "that file already exists 😅"
         )
 
 
@@ -527,7 +527,7 @@ def create_file(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't create "
+            f"I couldn't create "
             f"the file 😭\n"
             f"{error}"
         )
@@ -560,7 +560,7 @@ def create_folder(
     if not folder_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "a folder name 📁"
         )
 
@@ -573,7 +573,7 @@ def create_folder(
     if folder_path.exists():
 
         return (
-            "Brooo, that folder already exists 😅"
+            "that folder already exists 😅"
         )
 
 
@@ -595,7 +595,7 @@ def create_folder(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't create "
+            f"I couldn't create "
             f"the folder 😭\n"
             f"{error}"
         )
@@ -630,7 +630,7 @@ def list_folder(
     if not folder_path.exists():
 
         return (
-            f"Brooo, I couldn't find "
+            f"I couldn't find "
             f"this folder:\n"
             f"{folder_path}"
         )
@@ -639,7 +639,7 @@ def list_folder(
     if not folder_path.is_dir():
 
         return (
-            "Brooo, that is not a folder 📁"
+            "that is not a folder 📁"
         )
 
 
@@ -657,7 +657,7 @@ def list_folder(
         if not items:
 
             return (
-                "Brooo, this folder is empty 📁"
+                "this folder is empty 📁"
             )
 
 
@@ -688,7 +688,7 @@ def list_folder(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't read "
+            f"I couldn't read "
             f"this folder 😭\n"
             f"{error}"
         )
@@ -714,7 +714,7 @@ def find_files(
     if not filename:
 
         return (
-            "Brooo, tell me the file name "
+            "tell me the file name "
             "you want me to find 🔍"
         )
 
@@ -732,7 +732,7 @@ def find_files(
     if not search_path.exists():
 
         return (
-            f"Brooo, I couldn't find "
+            f"I couldn't find "
             f"this search location:\n"
             f"{search_path}"
         )
@@ -756,7 +756,7 @@ def find_files(
         if not results:
 
             return (
-                f"Brooo, I couldn't find "
+                f"I couldn't find "
                 f"{filename} 🔍"
             )
 
@@ -788,7 +788,7 @@ def find_files(
     except Exception as error:
 
         return (
-            f"Brooo, file search failed 😭\n"
+            f"file search failed 😭\n"
             f"{error}"
         )
 
@@ -820,7 +820,7 @@ def delete_file(
     if not file_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "a file path 📄"
         )
 
@@ -833,7 +833,7 @@ def delete_file(
     if not file_path.exists():
 
         return (
-            "Brooo, I couldn't find "
+            "I couldn't find "
             "that file 😅"
         )
 
@@ -841,7 +841,7 @@ def delete_file(
     if not file_path.is_file():
 
         return (
-            "Brooo, that is not a file 📁"
+            "that is not a file 📁"
         )
 
 
@@ -860,7 +860,7 @@ def delete_file(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't delete "
+            f"I couldn't delete "
             f"the file 😭\n"
             f"{error}"
         )
@@ -894,7 +894,7 @@ def move_file(
     if not source_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "the source file 📄"
         )
 
@@ -902,7 +902,7 @@ def move_file(
     if not destination_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "the destination 📁"
         )
 
@@ -919,7 +919,7 @@ def move_file(
     if not source_path.exists():
 
         return (
-            "Brooo, I couldn't find "
+            "I couldn't find "
             "the source file 😅"
         )
 
@@ -948,7 +948,7 @@ def move_file(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't move "
+            f"I couldn't move "
             f"the file 😭\n"
             f"{error}"
         )
@@ -982,7 +982,7 @@ def rename_file(
     if not file_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "a file path 📄"
         )
 
@@ -990,7 +990,7 @@ def rename_file(
     if not new_name:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "a new name 📄"
         )
 
@@ -1003,7 +1003,7 @@ def rename_file(
     if not file_path.exists():
 
         return (
-            "Brooo, I couldn't find "
+            "I couldn't find "
             "that file 😅"
         )
 
@@ -1017,7 +1017,7 @@ def rename_file(
     if new_path.exists():
 
         return (
-            "Brooo, a file or folder "
+            "a file or folder "
             "with that name already exists 😅"
         )
 
@@ -1041,7 +1041,7 @@ def rename_file(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't rename "
+            f"I couldn't rename "
             f"the file 😭\n"
             f"{error}"
         )
@@ -1066,7 +1066,7 @@ def get_file_info(
     if not file_path:
 
         return (
-            "Brooo, you didn't provide "
+            "you didn't provide "
             "a file path 📄"
         )
 
@@ -1079,7 +1079,7 @@ def get_file_info(
     if not file_path.exists():
 
         return (
-            "Brooo, I couldn't find "
+            "I couldn't find "
             "that file 😅"
         )
 
@@ -1130,7 +1130,7 @@ def get_file_info(
     except Exception as error:
 
         return (
-            f"Brooo, I couldn't get "
+            f"I couldn't get "
             f"file information 😭\n"
             f"{error}"
         )

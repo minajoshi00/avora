@@ -1,9 +1,13 @@
 """
-===============================================================
-                    AVORA AI THEME SYSTEM v1.0
-===============================================================
+==============================================================
+                    AVORA AI THEME SYSTEM v2.0
+==============================================================
 
+ChatGPT-inspired design system with modern, clean aesthetics.
 Centralized design token system with Light Mode, Dark Mode, and System Mode.
+
+Dark mode features a deep navy/black base with subtle blue/purple ambient
+glow and AVORA's signature green accent — premium and cinematic.
 
 Usage from any widget:
 
@@ -11,9 +15,9 @@ Usage from any widget:
 
     current = get_current_theme()
 
-    current["background"]["primary"]   -> "#0B0B12"
-    current["surface"]["card"]         -> "#111827"
-    current["text"]["primary"]         -> "#F5F5F5"
+    current["background"]["primary"]   -> "#030703"
+    current["surface"]["card"]         -> "#0A1A0A"
+    current["text"]["primary"]         -> "#E6FFEC"
 
     # Or in stylesheets:
 
@@ -99,7 +103,7 @@ LIGHT_THEME: Dict[str, Any] = {
         "info_bg": "#DBEAFE",
     },
 
-    # ── Button colors are derived from accent above; keep placeholders
+    # ── Button colors ───────────────────────────────────────────
     "button": {
         "primary_bg":       "#7B61FF",
         "primary_hover":    "#9478FF",
@@ -115,6 +119,17 @@ LIGHT_THEME: Dict[str, Any] = {
         "danger_text":      "#FFFFFF",
         "disabled_bg":      "#E4E4EC",
         "disabled_text":    "#A0A3B1",
+    },
+
+    # ── Chat-specific (Light) ───────────────────────────────────
+    "chat": {
+        "user_bubble":   "#7B61FF",
+        "user_text":     "#FFFFFF",
+        "ai_bubble":     "#F7F7FA",
+        "ai_border":     "#D4D4DC",
+        "ai_text":       "#1A1D2B",
+        "code_bg":       "#F3F4F6",
+        "typing_indicator":"#8C8F99",
     },
 
     # ── Shadows ─────────────────────────────────────────────────
@@ -143,94 +158,94 @@ DARK_THEME: Dict[str, Any] = {
 
     # ── Backgrounds ─────────────────────────────────────────────
     "background": {
-        "primary":   "#0B0B12",
-        "secondary": "#11111B",
-        "tertiary":  "#171722",
+        "primary":   "#030703",
+        "secondary": "#061206",
+        "tertiary":  "#091A09",
     },
 
     # ── Surfaces ────────────────────────────────────────────────
     "surface": {
-        "card":       "#191925",
-        "elevated":   "#1E1E2D",
-        "hover":      "#252538",
-        "pressed":    "#30304A",
-        "input":      "#20202D",
+        "card":       "#0A1A0A",
+        "elevated":   "#0D200D",
+        "hover":      "#112811",
+        "pressed":    "#153015",
+        "input":      "#081408",
     },
 
     # ── Text ────────────────────────────────────────────────────
     "text": {
-        "primary":   "#F5F5F5",
-        "secondary": "#B0B0C0",
-        "muted":     "#858599",
-        "inverse":   "#0B0B12",
+        "primary":   "#E6FFEC",
+        "secondary": "#8BCC9E",
+        "muted":     "#4A7A5C",
+        "inverse":   "#030703",
     },
 
     # ── Borders ─────────────────────────────────────────────────
     "border": {
-        "default":  "#303044",
-        "subtle":   "#252538",
-        "focus":    "#8B7AFF",
+        "default":  "#143018",
+        "subtle":   "#0D200D",
+        "focus":    "#00FF88",
     },
 
     # ── Dividers ────────────────────────────────────────────────
-    "divider": "#252538",
+    "divider": "#0D200D",
 
     # ── Accent ──────────────────────────────────────────────────
     "accent": {
-        "default":  "#8B7AFF",
-        "hover":    "#9E91FF",
-        "pressed":  "#6C63FF",
-        "muted":    "#2A2540",
-        "glow":     "rgba(139, 122, 255, 0.20)",
+        "default":  "#00FF88",
+        "hover":    "#33FFAA",
+        "pressed":  "#00CC6A",
+        "muted":    "rgba(0, 255, 136, 0.12)",
+        "glow":     "rgba(0, 255, 136, 0.25)",
     },
 
     # ── Semantics ───────────────────────────────────────────────
     "semantic": {
-        "success": "#34D399",
-        "success_bg": "rgba(52, 211, 153, 0.12)",
+        "success": "#00FF88",
+        "success_bg": "rgba(0, 255, 136, 0.12)",
         "error":   "#FF6B6B",
         "error_bg": "rgba(255, 107, 107, 0.12)",
         "warning": "#FBBF24",
         "warning_bg": "rgba(251, 191, 36, 0.12)",
-        "info":    "#60A5FA",
-        "info_bg": "rgba(96, 165, 250, 0.12)",
+        "info":    "#00FF88",
+        "info_bg": "rgba(0, 255, 136, 0.12)",
     },
 
     # ── Button colors ───────────────────────────────────────────
     "button": {
-        "primary_bg":       "#6C63FF",
-        "primary_hover":    "#817AFF",
-        "primary_pressed":  "#5149D8",
-        "primary_text":     "#FFFFFF",
-        "secondary_bg":     "#292944",
-        "secondary_hover":  "#3B3B5D",
-        "secondary_pressed":"#4A477A",
-        "secondary_text":   "#F5F5F5",
+        "primary_bg":       "#00CC6A",
+        "primary_hover":    "#00FF88",
+        "primary_pressed":  "#00AA55",
+        "primary_text":     "#030703",
+        "secondary_bg":     "#0D200D",
+        "secondary_hover":  "#153015",
+        "secondary_pressed":"#1A3A1A",
+        "secondary_text":   "#E6FFEC",
         "danger_bg":        "#FF4757",
         "danger_hover":     "#FF6B7A",
         "danger_pressed":   "#D63447",
         "danger_text":      "#FFFFFF",
-        "disabled_bg":      "#20202D",
-        "disabled_text":    "#777783",
+        "disabled_bg":      "#081408",
+        "disabled_text":    "#3A5A44",
     },
 
     # ── Shadows ─────────────────────────────────────────────────
     "shadow": {
-        "sm":   "rgba(0, 0, 0, 0.20)",
-        "md":   "rgba(0, 0, 0, 0.35)",
-        "lg":   "rgba(0, 0, 0, 0.50)",
-        "xl":   "rgba(0, 0, 0, 0.65)",
+        "sm":   "rgba(0, 0, 0, 0.30)",
+        "md":   "rgba(0, 255, 136, 0.08)",
+        "lg":   "rgba(0, 255, 136, 0.12)",
+        "xl":   "rgba(0, 255, 136, 0.18)",
     },
 
     # ── Chat-specific ───────────────────────────────────────────
     "chat": {
-        "user_bubble":   "#6C63FF",
-        "user_text":     "#FFFFFF",
-        "ai_bubble":     "#20202D",
-        "ai_border":     "#303044",
-        "ai_text":       "#F5F5F5",
-        "code_bg":       "#11111B",
-        "typing_indicator":"#8B8B9E",
+        "user_bubble":   "#00CC6A",
+        "user_text":     "#030703",
+        "ai_bubble":     "#0A1A0A",
+        "ai_border":     "#143018",
+        "ai_text":       "#E6FFEC",
+        "code_bg":       "#061206",
+        "typing_indicator":"#00FF88",
     },
 }
 
@@ -371,7 +386,7 @@ def generate_qss() -> str:
     ================================================= */
 
     QWidget {{
-        font-family: "Segoe UI";
+        font-family: "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
         color: {tx["primary"]};
         background-color: transparent;
     }}
@@ -409,16 +424,17 @@ def generate_qss() -> str:
     #Logo {{
         font-size: 24px;
         font-weight: 800;
-        letter-spacing: -0.5px;
+        letter-spacing: 2px;
         color: {tx["primary"]};
         padding: 4px 0 0 0;
     }}
 
     #SubText {{
-        color: {tx["muted"]};
-        font-size: 11px;
-        letter-spacing: 1.3px;
+        color: {a["default"]};
+        font-size: 10px;
+        letter-spacing: 2.5px;
         text-transform: uppercase;
+        font-weight: 600;
     }}
 
     /* =================================================
@@ -449,7 +465,7 @@ def generate_qss() -> str:
     #NewChatButton,
     #SettingsButton {{
         background-color: {s["hover"]};
-        border: 1px solid rgba(255,255,255,0.04);
+        border: 1px solid {br["subtle"]};
         border-radius: 12px;
         padding: 12px 14px;
         color: {tx["primary"]};
@@ -459,19 +475,20 @@ def generate_qss() -> str:
 
     #NewChatButton {{
         background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-            stop:0 #8B7AFF, stop:1 #6C63FF);
+            stop:0 #00CC6A, stop:1 #00FF88);
         border: none;
-        color: white;
+        color: {bt["primary_text"]};
     }}
 
     #NewChatButton:hover,
     #SettingsButton:hover {{
         background-color: {s["pressed"]};
+        border-color: {a["default"]};
     }}
 
     #NewChatButton:hover {{
         background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-            stop:0 #9E91FF, stop:1 #817AFF);
+            stop:0 #00DD77, stop:1 #33FFAA);
     }}
 
     #NewChatButton:pressed,
@@ -510,19 +527,22 @@ def generate_qss() -> str:
 
     #Header {{
         background-color: transparent;
-        border-bottom: 1px solid rgba(255,255,255,0.04);
+        border-bottom: 1px solid {br["subtle"]};
     }}
 
     #HeaderTitle {{
-        font-size: 18px;
+        font-size: 15px;
         font-weight: 700;
-        color: {tx["primary"]};
+        color: rgba(230, 255, 236, 0.6);
+        letter-spacing: 1.5px;
     }}
 
-    #HeaderStatus {{
-        color: {sem["success"]};
-        font-size: 12px;
-        font-weight: 600;
+    #HudStatus {{
+        color: {a["default"]};
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.8px;
+        text-transform: uppercase;
     }}
 
     /* =================================================
@@ -545,28 +565,28 @@ def generate_qss() -> str:
 
     #UserBubble {{
         background-color: {ch["user_bubble"]};
-        border-radius: 18px;
-        padding: 12px 16px;
+        border-radius: 14px;
+        padding: 9px 14px;
         font-size: 14px;
-        line-height: 1.5;
+        line-height: 1.45;
         color: {ch["user_text"]};
     }}
 
     #AIBubble {{
         background-color: {ch["ai_bubble"]};
-        border: 1px solid rgba(255,255,255,0.04);
-        border-radius: 18px;
-        padding: 12px 16px;
+        border: 1px solid {ch["ai_border"]};
+        border-radius: 14px;
+        padding: 10px 14px;
         font-size: 14px;
-        line-height: 1.6;
+        line-height: 1.55;
         color: {ch["ai_text"]};
     }}
 
     #ImageBubble {{
         background-color: {ch["ai_bubble"]};
         border: 1px solid {ch["ai_border"]};
-        border-radius: 16px;
-        padding: 12px 16px;
+        border-radius: 12px;
+        padding: 8px 12px;
     }}
 
     #Typing {{
@@ -580,12 +600,13 @@ def generate_qss() -> str:
 
     #InputContainer {{
         background-color: {s["input"]};
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 20px;
+        border: 1px solid {br["default"]};
+        border-radius: 24px;
+        padding: 4px;
     }}
 
     #InputContainer:focus-within {{
-        border: 1px solid rgba(139,122,255,0.7);
+        border: 1px solid {a["default"]};
         background-color: {s["hover"]};
     }}
 
@@ -594,7 +615,7 @@ def generate_qss() -> str:
         border: none;
         color: {tx["primary"]};
         font-size: 15px;
-        padding: 12px 10px;
+        padding: 10px 12px;
         selection-background-color: {a["muted"]};
         selection-color: {tx["primary"]};
     }}
@@ -613,9 +634,9 @@ def generate_qss() -> str:
 
     #SendButton {{
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 #8B7AFF, stop:1 #5BC0FF);
+            stop:0 #00CC6A, stop:1 #00FF88);
         border: none;
-        border-radius: 14px;
+        border-radius: 16px;
         color: {bt["primary_text"]};
         font-size: 18px;
         font-weight: 700;
@@ -623,12 +644,12 @@ def generate_qss() -> str:
 
     #SendButton:hover {{
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 #9E91FF, stop:1 #75C9FF);
+            stop:0 #00DD77, stop:1 #33FFAA);
     }}
 
     #SendButton:pressed {{
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 #7567F0, stop:1 #3FA8E8);
+            stop:0 #00AA55, stop:1 #00DD77);
     }}
 
     #SendButton:disabled {{
@@ -639,7 +660,7 @@ def generate_qss() -> str:
     #MicButton {{
         background-color: {s["input"]};
         border: 1px solid {br["default"]};
-        border-radius: 13px;
+        border-radius: 16px;
         color: {tx["secondary"]};
         font-size: 18px;
     }}
@@ -673,7 +694,7 @@ def generate_qss() -> str:
     }}
 
     QScrollBar::handle:vertical:hover {{
-        background: {br["focus"]};
+        background: {a["default"]};
     }}
 
     QScrollBar::add-line:vertical,

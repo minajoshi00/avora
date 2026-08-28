@@ -26,14 +26,16 @@ Design Philosophy:
 ================================================================
 """
 
-import math
-import random
-import time
+import json
 import logging
+import os
+import random
 import threading
+import time
+from collections.abc import Callable
+from datetime import datetime
 from enum import Enum
-from typing import Optional, Callable
-from datetime import datetime, timedelta
+from pathlib import Path
 
 logger = logging.getLogger("CompanionIntelligence")
 
@@ -42,8 +44,10 @@ logger = logging.getLogger("CompanionIntelligence")
 # COMPANION STATE ENUMS
 # =============================================================
 
+
 class CompanionMood(Enum):
     """Core emotional states the companion can be in."""
+
     NEUTRAL = "neutral"
     HAPPY = "happy"
     EXCITED = "excited"
@@ -61,6 +65,7 @@ class CompanionMood(Enum):
 
 class UserState(Enum):
     """Inferred user states from context analysis."""
+
     FOCUSED = "focused"
     STUCK = "stuck"
     SUCCEEDING = "succeeding"
@@ -76,14 +81,15 @@ class UserState(Enum):
 
 class InterventionType(Enum):
     """Types of companion actions."""
-    SILENT_AWARENESS = "silent_awareness"       # animation change only
-    SUBTLE_HINT = "subtle_hint"                  # small notification bubble
-    PROACTIVE_SUGGESTION = "proactive_suggestion" # chat message
-    CELEBRATION = "celebration"                   # excited reaction
-    ENCOURAGEMENT = "encouragement"               # support message
-    CHECK_IN = "check_in"                         # "you ok?" type
-    BREAK_REMINDER = "break_reminder"             # take a break
-    CONTEXT_QUERY = "context_query"              # "need help with that?"
+
+    SILENT_AWARENESS = "silent_awareness"  # animation change only
+    SUBTLE_HINT = "subtle_hint"  # small notification bubble
+    PROACTIVE_SUGGESTION = "proactive_suggestion"  # chat message
+    CELEBRATION = "celebration"  # excited reaction
+    ENCOURAGEMENT = "encouragement"  # support message
+    CHECK_IN = "check_in"  # "you ok?" type
+    BREAK_REMINDER = "break_reminder"  # take a break
+    CONTEXT_QUERY = "context_query"  # "need help with that?"
 
 
 # =============================================================
@@ -91,14 +97,14 @@ class InterventionType(Enum):
 # =============================================================
 
 _COOLDOWN_DEFAULTS = {
-    InterventionType.SILENT_AWARENESS: 30,         # 30s between silent reacts
-    InterventionType.SUBTLE_HINT: 120,             # 2 min between hints
-    InterventionType.PROACTIVE_SUGGESTION: 600,    # 10 min between suggestions
-    InterventionType.CELEBRATION: 300,             # 5 min between celebrations
-    InterventionType.ENCOURAGEMENT: 180,           # 3 min between encouragements
-    InterventionType.CHECK_IN: 600,                # 10 min between check-ins
-    InterventionType.BREAK_REMINDER: 900,          # 15 min between break reminders
-    InterventionType.CONTEXT_QUERY: 300,           # 5 min between context queries
+    InterventionType.SILENT_AWARENESS: 30,  # 30s between silent reacts
+    InterventionType.SUBTLE_HINT: 120,  # 2 min between hints
+    InterventionType.PROACTIVE_SUGGESTION: 600,  # 10 min between suggestions
+    InterventionType.CELEBRATION: 300,  # 5 min between celebrations
+    InterventionType.ENCOURAGEMENT: 180,  # 3 min between encouragements
+    InterventionType.CHECK_IN: 600,  # 10 min between check-ins
+    InterventionType.BREAK_REMINDER: 900,  # 15 min between break reminders
+    InterventionType.CONTEXT_QUERY: 300,  # 5 min between context queries
 }
 
 _CONFIDENCE_THRESHOLDS = {
@@ -123,30 +129,73 @@ _MAX_INTERVENTIONS_PER_HOUR = {
     InterventionType.CONTEXT_QUERY: 5,
 }
 
-# Hours after which a goal is considered "stale" if no activity
-_GOAL_STALE_HOURS = 4
+# Hours after which a goal is considered "stale" if no activity.
+# Configurable via settings key "companion.goal_stale_hours".
+_DEFAULT_GOAL_STALE_HOURS = 4
+
+
+def _goal_stale_hours() -> float:
+    try:
+        from settings import get_setting
+
+        value = float(
+            get_setting(
+                "companion.goal_stale_hours",
+                _DEFAULT_GOAL_STALE_HOURS,
+            )
+        )
+        return max(1.0, value)
+
+    except Exception:
+        return float(_DEFAULT_GOAL_STALE_HOURS)
+
+
+def _goals_file():
+    """Path of the persistent goals file (created lazily)."""
+    try:
+        from app_paths import APP_DATA_DIR
+
+        return Path(APP_DATA_DIR) / "goals.json"
+
+    except Exception:
+        return None
 
 
 # =============================================================
 # CONTEXT TRACKER
 # =============================================================
 
+
 class ContextSnapshot:
     """
     A snapshot of everything the companion knows at a moment in time.
     This is the unified context object.
     """
+
     __slots__ = (
-        "timestamp", "activity_type", "window_title", "process_name",
-        "activity_duration_minutes", "session_duration_minutes",
-        "idle_minutes", "user_state", "companion_mood",
-        "active_goals", "recent_achievements",
-        "conversation_count", "last_interaction_time",
-        "is_processing", "is_voice_active",
-        "hour_of_day", "day_of_week",
+        "timestamp",
+        "activity_type",
+        "window_title",
+        "process_name",
+        "activity_duration_minutes",
+        "session_duration_minutes",
+        "idle_minutes",
+        "user_state",
+        "companion_mood",
+        "active_goals",
+        "recent_achievements",
+        "conversation_count",
+        "last_interaction_time",
+        "is_processing",
+        "is_voice_active",
+        "hour_of_day",
+        "day_of_week",
         # Mission context
-        "active_missions", "current_mission", "mission_progress",
-        "mission_next_action", "mission_deadline_soon",
+        "active_missions",
+        "current_mission",
+        "mission_progress",
+        "mission_next_action",
+        "mission_deadline_soon",
     )
 
     def __init__(self):
@@ -209,7 +258,7 @@ class ContextTracker:
         self._current: ContextSnapshot = ContextSnapshot()
 
         # Accumulated stats
-        self._activity_log: list[dict] = []          # activity transitions
+        self._activity_log: list[dict] = []  # activity transitions
         self._max_activity_log = 50
         self._session_activities: dict[str, float] = {}  # activity -> total minutes
         self._session_start: float = time.time()
@@ -219,15 +268,21 @@ class ContextTracker:
         # User state inference
         self._user_state_history: list[tuple[float, UserState]] = []
         self._stuck_counters: dict[str, int] = {}
-        self._break_start: Optional[float] = None
+        self._break_start: float | None = None
 
     # =========================================================
     # UPDATE
     # =========================================================
 
-    def update(self, activity_type: str, window_title: str = "",
-               process_name: str = "", idle_minutes: float = 0.0,
-               is_processing: bool = False, is_voice_active: bool = False):
+    def update(
+        self,
+        activity_type: str,
+        window_title: str = "",
+        process_name: str = "",
+        idle_minutes: float = 0.0,
+        is_processing: bool = False,
+        is_voice_active: bool = False,
+    ):
         """
         Main update call - called every monitor cycle.
         Analyzes new input and updates the context snapshot.
@@ -261,11 +316,13 @@ class ContextTracker:
             # Track activity transitions
             prev_type = self._current.activity_type if self._current else None
             if prev_type and prev_type != activity_type:
-                self._activity_log.append({
-                    "from": prev_type,
-                    "to": activity_type,
-                    "time": now,
-                })
+                self._activity_log.append(
+                    {
+                        "from": prev_type,
+                        "to": activity_type,
+                        "time": now,
+                    }
+                )
                 if len(self._activity_log) > self._max_activity_log:
                     self._activity_log.pop(0)
 
@@ -275,14 +332,19 @@ class ContextTracker:
             )
 
             # Carry over goals and achievements
-            snapshot.active_goals = list(self._current.active_goals) if self._current else []
-            snapshot.recent_achievements = list(self._current.recent_achievements) if self._current else []
+            snapshot.active_goals = (
+                list(self._current.active_goals) if self._current else []
+            )
+            snapshot.recent_achievements = (
+                list(self._current.recent_achievements) if self._current else []
+            )
 
             # =========================================================
             # MISSION CONTEXT INTEGRATION
             # =========================================================
             try:
                 from mission_tracker import get_mission_tracker
+
                 tracker = get_mission_tracker()
                 active_missions = tracker.get_active_missions()
                 snapshot.active_missions = [m.title for m in active_missions[:3]]
@@ -332,8 +394,13 @@ class ContextTracker:
         # Fallback: from session start
         return (now - self._session_start) / 60.0
 
-    def _infer_user_state(self, activity_type: str, idle_minutes: float,
-                          window_title: str, process_name: str) -> UserState:
+    def _infer_user_state(
+        self,
+        activity_type: str,
+        idle_minutes: float,
+        window_title: str,
+        process_name: str,
+    ) -> UserState:
         """
         Locally infer the user's state from context.
         No AI calls needed.
@@ -354,15 +421,31 @@ class ContextTracker:
             combined = (window_title + " " + process_name).lower()
 
             # Check for stuck indicators (debugger, error, etc.)
-            stuck_keywords = ["error", "exception", "failed", "bug", "fix",
-                              "debug", "stack trace", "crash", "not working",
-                              "why", "problem", "issue", "broken"]
+            stuck_keywords = [
+                "error",
+                "exception",
+                "failed",
+                "bug",
+                "fix",
+                "debug",
+                "stack trace",
+                "crash",
+                "not working",
+                "why",
+                "problem",
+                "issue",
+                "broken",
+            ]
             if any(kw in combined for kw in stuck_keywords):
-                self._stuck_counters["coding"] = self._stuck_counters.get("coding", 0) + 1
+                self._stuck_counters["coding"] = (
+                    self._stuck_counters.get("coding", 0) + 1
+                )
                 if self._stuck_counters["coding"] > 3:
                     return UserState.STUCK
             else:
-                self._stuck_counters["coding"] = max(0, self._stuck_counters.get("coding", 0) - 1)
+                self._stuck_counters["coding"] = max(
+                    0, self._stuck_counters.get("coding", 0) - 1
+                )
 
             # Check for focus indicators
             if not any(kw in combined for kw in ["youtube", "music", "browser"]):
@@ -372,9 +455,19 @@ class ContextTracker:
 
         elif activity_type == "browsing":
             combined = (window_title + " " + process_name).lower()
-            research_keywords = ["documentation", "docs", "tutorial", "guide",
-                                 "learn", "how to", "reference", "api",
-                                 "stackoverflow", "github", "wiki"]
+            research_keywords = [
+                "documentation",
+                "docs",
+                "tutorial",
+                "guide",
+                "learn",
+                "how to",
+                "reference",
+                "api",
+                "stackoverflow",
+                "github",
+                "wiki",
+            ]
             if any(kw in combined for kw in research_keywords):
                 return UserState.LEARNING
             return UserState.EXPLORING
@@ -385,10 +478,7 @@ class ContextTracker:
         elif activity_type == "watching_videos":
             return UserState.EXPLORING
 
-        elif activity_type == "gaming":
-            return UserState.FOCUSED
-
-        elif activity_type == "working":
+        elif activity_type == "gaming" or activity_type == "working":
             return UserState.FOCUSED
 
         elif activity_type == "idle":
@@ -421,9 +511,7 @@ class ContextTracker:
         with self._lock:
             duration = (time.time() - self._session_start) / 60.0
             top_activities = sorted(
-                self._session_activities.items(),
-                key=lambda x: x[1],
-                reverse=True
+                self._session_activities.items(), key=lambda x: x[1], reverse=True
             )[:5]
             return {
                 "duration_minutes": round(duration, 1),
@@ -436,6 +524,7 @@ class ContextTracker:
 # =============================================================
 # EMOTION ENGINE
 # =============================================================
+
 
 class EmotionEngine:
     """
@@ -454,48 +543,39 @@ class EmotionEngine:
         (CompanionMood.HAPPY, UserState.FOCUSED): CompanionMood.CALM,
         (CompanionMood.EXCITED, UserState.FOCUSED): CompanionMood.THOUGHTFUL,
         (CompanionMood.PLAYFUL, UserState.FOCUSED): CompanionMood.THOUGHTFUL,
-
         # User is stuck -> companion is concerned or thoughtful
         (CompanionMood.NEUTRAL, UserState.STUCK): CompanionMood.THOUGHTFUL,
         (CompanionMood.CALM, UserState.STUCK): CompanionMood.CONCERNED,
         (CompanionMood.HAPPY, UserState.STUCK): CompanionMood.CONCERNED,
         (CompanionMood.THOUGHTFUL, UserState.STUCK): CompanionMood.CONCERNED,
-
         # User is succeeding -> companion is proud or happy
         (CompanionMood.NEUTRAL, UserState.SUCCEEDING): CompanionMood.PROUD,
         (CompanionMood.THOUGHTFUL, UserState.SUCCEEDING): CompanionMood.HAPPY,
         (CompanionMood.CONCERNED, UserState.SUCCEEDING): CompanionMood.HAPPY,
         (CompanionMood.CALM, UserState.SUCCEEDING): CompanionMood.PROUD,
-
         # User is learning -> companion is curious
         (CompanionMood.NEUTRAL, UserState.LEARNING): CompanionMood.CURIOUS,
         (CompanionMood.CALM, UserState.LEARNING): CompanionMood.CURIOUS,
         (CompanionMood.THOUGHTFUL, UserState.LEARNING): CompanionMood.CURIOUS,
-
         # User is creating -> companion is excited or curious
         (CompanionMood.NEUTRAL, UserState.CREATING): CompanionMood.CURIOUS,
         (CompanionMood.CALM, UserState.CREATING): CompanionMood.CURIOUS,
         (CompanionMood.THOUGHTFUL, UserState.CREATING): CompanionMood.EXCITED,
-
         # User on break -> companion is neutral/calm
         (CompanionMood.NEUTRAL, UserState.ON_BREAK): CompanionMood.SLEEPY,
         (CompanionMood.CALM, UserState.ON_BREAK): CompanionMood.SLEEPY,
         (CompanionMood.CURIOUS, UserState.ON_BREAK): CompanionMood.NEUTRAL,
-
         # User idle -> companion goes neutral/sleepy over time
         (CompanionMood.NEUTRAL, UserState.IDLE): CompanionMood.NEUTRAL,
         (CompanionMood.CALM, UserState.IDLE): CompanionMood.SLEEPY,
-
         # User frustrated -> companion is sympathetic
         (CompanionMood.NEUTRAL, UserState.FRUSTRATED): CompanionMood.SYMPATHETIC,
         (CompanionMood.CALM, UserState.FRUSTRATED): CompanionMood.SYMPATHETIC,
         (CompanionMood.CONCERNED, UserState.FRUSTRATED): CompanionMood.SYMPATHETIC,
-
         # User exploring/browsing -> companion is curious or playful
         (CompanionMood.NEUTRAL, UserState.EXPLORING): CompanionMood.CURIOUS,
         (CompanionMood.CALM, UserState.EXPLORING): CompanionMood.CURIOUS,
         (CompanionMood.THOUGHTFUL, UserState.EXPLORING): CompanionMood.PLAYFUL,
-
         # User distracted -> companion is thoughtful
         (CompanionMood.NEUTRAL, UserState.DISTRACTED): CompanionMood.THOUGHTFUL,
         (CompanionMood.CALM, UserState.DISTRACTED): CompanionMood.CURIOUS,
@@ -513,13 +593,13 @@ class EmotionEngine:
         self._max_mood_history = 50
 
         # Decay settings
-        self._decay_rate = 0.02          # per update
-        self._intensity_decay = 0.01     # per update
+        self._decay_rate = 0.02  # per update
+        self._intensity_decay = 0.01  # per update
         self._minimum_intensity = 0.1
 
         # Sustained mood tracking (to avoid rapid flickering)
         self._mood_stability_counter: dict[CompanionMood, int] = {}
-        self._stability_threshold = 3     # cycles before mood change applies
+        self._stability_threshold = 3  # cycles before mood change applies
 
         # Personality influence
         self._personality_bias = self._get_personality_bias(personality)
@@ -533,7 +613,9 @@ class EmotionEngine:
             "calm": {"base_mood": CompanionMood.CALM, "bounce_back": 0.3},
             "friendly_bro": {"base_mood": CompanionMood.EXCITED, "bounce_back": 0.9},
         }
-        return biases.get(personality, {"base_mood": CompanionMood.NEUTRAL, "bounce_back": 0.6})
+        return biases.get(
+            personality, {"base_mood": CompanionMood.NEUTRAL, "bounce_back": 0.6}
+        )
 
     # =========================================================
     # UPDATE
@@ -547,12 +629,14 @@ class EmotionEngine:
         with self._lock:
             # Natural decay
             self._intensity = max(
-                self._minimum_intensity,
-                self._intensity - self._intensity_decay
+                self._minimum_intensity, self._intensity - self._intensity_decay
             )
 
             # If intensity is very low, drift toward base mood
-            if self._intensity < 0.2 and self._current_mood != self._personality_bias["base_mood"]:
+            if (
+                self._intensity < 0.2
+                and self._current_mood != self._personality_bias["base_mood"]
+            ):
                 self._current_mood = self._personality_bias["base_mood"]
                 self._intensity = 0.3
 
@@ -562,7 +646,9 @@ class EmotionEngine:
                 new_mood = self._TRANSITION_RULES[transition_key]
 
                 # Stability check: don't flicker
-                self._mood_stability_counter[new_mood] = self._mood_stability_counter.get(new_mood, 0) + 1
+                self._mood_stability_counter[new_mood] = (
+                    self._mood_stability_counter.get(new_mood, 0) + 1
+                )
 
                 if self._mood_stability_counter[new_mood] >= self._stability_threshold:
                     if new_mood != self._current_mood:
@@ -571,7 +657,9 @@ class EmotionEngine:
                         self._intensity = min(1.0, self._intensity + 0.3)
 
                         # Log transition
-                        self._mood_history.append((time.time(), new_mood, self._intensity))
+                        self._mood_history.append(
+                            (time.time(), new_mood, self._intensity)
+                        )
                         if len(self._mood_history) > self._max_mood_history:
                             self._mood_history.pop(0)
 
@@ -593,7 +681,11 @@ class EmotionEngine:
             hour = context.hour_of_day
             if hour >= 22 or hour <= 5:
                 # Night time - drift toward sleepy/calm
-                if self._current_mood not in (CompanionMood.SLEEPY, CompanionMood.CALM, CompanionMood.NEUTRAL):
+                if self._current_mood not in (
+                    CompanionMood.SLEEPY,
+                    CompanionMood.CALM,
+                    CompanionMood.NEUTRAL,
+                ):
                     if random.random() < 0.05:
                         self._current_mood = CompanionMood.CALM
                         self._intensity = max(0.2, self._intensity * 0.8)
@@ -674,6 +766,7 @@ class EmotionEngine:
 # GOAL TRACKER
 # =============================================================
 
+
 class GoalTracker:
     """
     Tracks what the user is working on and detects progress.
@@ -681,21 +774,83 @@ class GoalTracker:
       - Explicit (user says "I'm working on X")
       - Implicit (detected from persistent coding/browsing patterns)
       - Self-correcting (goals expire after inactivity)
+
+    V2: Goals and achievements are persisted to goals.json so they
+    survive restarts. Completed goals remain available as history.
     """
 
     def __init__(self):
         self._lock = threading.RLock()
         self._goals: list[dict] = []
-        self._max_goals = 10
+        self._max_goals = 25
         self._achievements: list[dict] = []
         self._max_achievements = 50
+        self._load_persisted()
+
+    # =========================================================
+    # PERSISTENCE (V2)
+    # =========================================================
+
+    def _load_persisted(self):
+        """Load goals and achievements from disk. Safe on corruption."""
+        path = _goals_file()
+        if path is None:
+            return
+
+        try:
+            if not path.exists():
+                return
+
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if not isinstance(data, dict):
+                return
+
+            goals = data.get("goals", [])
+            achievements = data.get("achievements", [])
+
+            if isinstance(goals, list):
+                self._goals = [g for g in goals if isinstance(g, dict)]
+
+            if isinstance(achievements, list):
+                self._achievements = [a for a in achievements if isinstance(a, dict)]
+
+        except Exception as e:
+            logger.debug(f"Goal persistence load error: {e}")
+
+    def _persist(self):
+        """Atomically persist goals and achievements."""
+        path = _goals_file()
+        if path is None:
+            return
+
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+            data = {
+                "goals": self._goals[-self._max_goals :],
+                "achievements": self._achievements[-self._max_achievements :],
+                "saved_at": time.time(),
+            }
+
+            tmp_path = path.with_suffix(".tmp")
+
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            os.replace(str(tmp_path), str(path))
+
+        except Exception as e:
+            logger.debug(f"Goal persistence save error: {e}")
 
     # =========================================================
     # GOAL MANAGEMENT
     # =========================================================
 
-    def set_active_goal(self, description: str, category: str = "general",
-                        context: Optional[dict] = None):
+    def set_active_goal(
+        self, description: str, category: str = "general", context: dict | None = None
+    ):
         """Set or update the current active goal."""
         with self._lock:
             now = time.time()
@@ -706,26 +861,37 @@ class GoalTracker:
                     goal["last_active"] = now
                     goal["updated_count"] = goal.get("updated_count", 0) + 1
                     goal["context"] = context or goal.get("context", {})
+                    if goal.get("completed"):
+                        # Re-activated a previously completed goal
+                        goal["completed"] = False
+                        goal["completed_at"] = None
+                        goal["progress"] = min(goal.get("progress", 0.0), 0.9)
+                    self._persist()
                     return
 
             # Add new goal
-            self._goals.append({
-                "description": description,
-                "category": category,
-                "created_at": now,
-                "last_active": now,
-                "progress": 0.0,         # 0.0 to 1.0
-                "updated_count": 1,
-                "context": context or {},
-                "milestones": [],
-                "completed": False,
-            })
+            self._goals.append(
+                {
+                    "description": description,
+                    "category": category,
+                    "created_at": now,
+                    "last_active": now,
+                    "progress": 0.0,  # 0.0 to 1.0
+                    "updated_count": 1,
+                    "context": context or {},
+                    "milestones": [],
+                    "completed": False,
+                    "completed_at": None,
+                }
+            )
 
             # Enforce limit
             if len(self._goals) > self._max_goals:
                 # Remove oldest inactive goal
                 self._goals.sort(key=lambda g: g["last_active"])
                 self._goals.pop(0)
+
+            self._persist()
 
     def update_goal_progress(self, description: str, progress_delta: float = 0.05):
         """Increment progress on a goal."""
@@ -739,17 +905,23 @@ class GoalTracker:
                     old_milestone = int((goal["progress"] - progress_delta) * 10)
                     new_milestone = int(goal["progress"] * 10)
                     if new_milestone > old_milestone and new_milestone in (3, 5, 8, 10):
-                        goal["milestones"].append({
-                            "level": new_milestone,
-                            "time": time.time(),
-                        })
+                        goal["milestones"].append(
+                            {
+                                "level": new_milestone,
+                                "time": time.time(),
+                            }
+                        )
 
                     # Check completion
                     if goal["progress"] >= 1.0 and not goal["completed"]:
                         goal["completed"] = True
                         goal["completed_at"] = time.time()
+                        self._persist()
+                        self._record_goal_completion_memory(goal)
                         return True  # signal achievement
+                    self._persist()
                     return False
+            return False
 
     def complete_goal(self, description: str) -> bool:
         """Mark a goal as completed."""
@@ -760,26 +932,94 @@ class GoalTracker:
                         goal["completed"] = True
                         goal["completed_at"] = time.time()
                         goal["progress"] = 1.0
+                        self._persist()
+                        self._record_goal_completion_memory(goal)
                         return True
                     return False
             return False
+
+    def _record_goal_completion_memory(self, goal: dict):
+        """Record a completed goal as a journey memory (best effort)."""
+        try:
+            from memory import add_journey_memory
+
+            add_journey_memory(
+                "milestone",
+                f"completed goal: {goal['description']}",
+                importance=0.7,
+            )
+
+        except Exception as e:
+            logger.debug(f"Goal completion memory error: {e}")
 
     def get_active_goals(self) -> list[dict]:
         """Get goals that are not completed and not stale."""
         with self._lock:
             now = time.time()
+            stale_limit = _goal_stale_hours()
             active = []
             for goal in self._goals:
                 if goal["completed"]:
                     continue
                 # Check staleness
                 hours_since = (now - goal["last_active"]) / 3600.0
-                if hours_since > _GOAL_STALE_HOURS:
+                if hours_since > stale_limit:
                     continue
                 active.append(dict(goal))
             return active
 
-    def get_goal_by_index(self, index: int = 0) -> Optional[dict]:
+    def get_goal_status(self, description: str) -> dict | None:
+        """Get the full status of one goal by description (V2)."""
+        with self._lock:
+            target = description.strip().lower()
+            for goal in self._goals:
+                if goal["description"].strip().lower() == target:
+                    status = dict(goal)
+                    status["hours_since_active"] = round(
+                        (time.time() - goal["last_active"]) / 3600.0, 2
+                    )
+                    return status
+            return None
+
+    def get_goal_history(self, limit: int = 20) -> list[dict]:
+        """Get recently completed goals, newest first (V2)."""
+        with self._lock:
+            completed = [dict(g) for g in self._goals if g.get("completed")]
+            completed.sort(
+                key=lambda g: g.get("completed_at") or 0,
+                reverse=True,
+            )
+            return completed[:limit]
+
+    def get_continuation_candidate(self, max_idle_hours: float = 24.0) -> dict | None:
+        """
+        Find a goal worth gently resurfacing (V2).
+
+        Returns an incomplete goal that has been idle for a while
+        (but not abandoned forever), or None. Used by proactive
+        suggestions - never spams because callers apply cooldowns.
+        """
+        with self._lock:
+            now = time.time()
+            candidates = []
+            for goal in self._goals:
+                if goal.get("completed"):
+                    continue
+                idle_hours = (now - goal["last_active"]) / 3600.0
+                if idle_hours < 1.0:
+                    continue  # too recent, user is probably on it
+                if idle_hours > max_idle_hours:
+                    continue  # too old, likely abandoned
+                candidates.append((idle_hours, dict(goal)))
+
+            if not candidates:
+                return None
+
+            # Prefer the most recently active candidate
+            candidates.sort(key=lambda pair: pair[0])
+            return candidates[0][1]
+
+    def get_goal_by_index(self, index: int = 0) -> dict | None:
         """Get the most recent active goal, or by index."""
         goals = self.get_active_goals()
         if not goals:
@@ -792,17 +1032,24 @@ class GoalTracker:
     # ACHIEVEMENTS
     # =========================================================
 
-    def add_achievement(self, title: str, description: str,
-                        category: str = "general", importance: float = 0.5):
+    def add_achievement(
+        self,
+        title: str,
+        description: str,
+        category: str = "general",
+        importance: float = 0.5,
+    ):
         """Record an achievement."""
         with self._lock:
-            self._achievements.append({
-                "title": title,
-                "description": description,
-                "category": category,
-                "importance": max(0.0, min(1.0, importance)),
-                "time": time.time(),
-            })
+            self._achievements.append(
+                {
+                    "title": title,
+                    "description": description,
+                    "category": category,
+                    "importance": max(0.0, min(1.0, importance)),
+                    "time": time.time(),
+                }
+            )
             if len(self._achievements) > self._max_achievements:
                 self._achievements.pop(0)
 
@@ -823,6 +1070,7 @@ class GoalTracker:
 # =============================================================
 # PROACTIVE SUGGESTION ENGINE
 # =============================================================
+
 
 class ProactiveSuggester:
     """
@@ -946,8 +1194,9 @@ class ProactiveSuggester:
     # SCORING
     # =========================================================
 
-    def score_intervention(self, context: ContextSnapshot,
-                           mood: CompanionMood) -> tuple[Optional[InterventionType], float]:
+    def score_intervention(
+        self, context: ContextSnapshot, mood: CompanionMood
+    ) -> tuple[InterventionType | None, float]:
         """
         Score potential interventions.
         Returns (best_intervention_type, confidence_score).
@@ -1090,18 +1339,22 @@ class ProactiveSuggester:
                 "type": InterventionType.SILENT_AWARENESS,
             },
         }
-        return generic.get(user_state, {
-            "message": None,
-            "character_emotion": "neutral",
-            "type": InterventionType.SILENT_AWARENESS,
-        })
+        return generic.get(
+            user_state,
+            {
+                "message": None,
+                "character_emotion": "neutral",
+                "type": InterventionType.SILENT_AWARENESS,
+            },
+        )
 
     # =========================================================
     # INTERVENTION
     # =========================================================
 
-    def get_suggestion(self, context: ContextSnapshot,
-                       mood: CompanionMood) -> Optional[dict]:
+    def get_suggestion(
+        self, context: ContextSnapshot, mood: CompanionMood
+    ) -> dict | None:
         """
         Get the best suggestion for the current context.
         Returns None if no intervention is appropriate.
@@ -1140,7 +1393,9 @@ class ProactiveSuggester:
         cooldown_key = f"{context.activity_type}_{context.user_state}"
         self._cooldowns[cooldown_key] = time.time()
         type_key = intervention_type.value
-        self._intervention_counts[type_key] = self._intervention_counts.get(type_key, 0) + 1
+        self._intervention_counts[type_key] = (
+            self._intervention_counts.get(type_key, 0) + 1
+        )
 
         return {
             "message": message,
@@ -1156,7 +1411,7 @@ class ProactiveSuggester:
             return random.choice(alternatives)
         return message
 
-    def get_break_reminder(self, context: ContextSnapshot) -> Optional[dict]:
+    def get_break_reminder(self, context: ContextSnapshot) -> dict | None:
         """
         Check if a break reminder is appropriate.
         Only for long continuous sessions.
@@ -1165,9 +1420,13 @@ class ProactiveSuggester:
             return None
 
         # Check if they're focused on something intensive
-        if context.user_state in (UserState.FOCUSED, UserState.CREATING, UserState.STUCK):
+        if context.user_state in (
+            UserState.FOCUSED,
+            UserState.CREATING,
+            UserState.STUCK,
+        ):
             return {
-                "message": "You've been at it for a while bro! Maybe take a short break? 🧘",
+                "message": "You've been at it for a while bro! Maybe a little break? 🧘",
                 "character_emotion": "concerned",
                 "type": InterventionType.BREAK_REMINDER,
                 "confidence": 0.6,
@@ -1175,16 +1434,115 @@ class ProactiveSuggester:
 
         return None
 
+    # =========================================================
+    # V2: GOAL / MEMORY AWARE SUGGESTIONS
+    # =========================================================
+
+    def get_goal_suggestion(
+        self,
+        goal: dict,
+        cooldown_key: str = "goal_continuation",
+    ) -> dict | None:
+        """
+        Build a gentle suggestion to continue an idle goal.
+
+        Only fires when:
+          - Proactive suggestions are enabled in settings
+          - The goal has been idle for a while (not abandoned)
+          - The cooldown has elapsed (never spams)
+        """
+        try:
+            from settings import get_setting
+
+            if not get_setting("activity_awareness.proactive_notifications", True):
+                return None
+        except Exception:
+            pass
+
+        now = time.time()
+        last = self._cooldowns.get(cooldown_key, 0)
+        if now - last < _COOLDOWN_DEFAULTS.get(
+            InterventionType.PROACTIVE_SUGGESTION, 600
+        ):
+            return None
+
+        description = goal.get("description", "")
+        if not description:
+            return None
+
+        self._cooldowns[cooldown_key] = now
+        type_key = InterventionType.PROACTIVE_SUGGESTION.value
+        self._intervention_counts[type_key] = (
+            self._intervention_counts.get(type_key, 0) + 1
+        )
+
+        return {
+            "message": (
+                f"You were working on '{description}' earlier. Want to continue?"
+            ),
+            "character_emotion": "curious",
+            "type": InterventionType.PROACTIVE_SUGGESTION,
+            "confidence": 0.7,
+        }
+
+    def get_memory_recall_suggestion(
+        self,
+        memory: dict,
+        cooldown_key: str = "memory_recall",
+    ) -> dict | None:
+        """
+        Suggest recalling a meaningful journey memory.
+
+        Fires only when proactive suggestions are enabled and
+        the cooldown has elapsed. Never fabricates - only uses
+        memories that actually exist.
+        """
+        try:
+            from settings import get_setting
+
+            if not get_setting("activity_awareness.proactive_notifications", True):
+                return None
+        except Exception:
+            pass
+
+        now = time.time()
+        last = self._cooldowns.get(cooldown_key, 0)
+        if now - last < _COOLDOWN_DEFAULTS.get(
+            InterventionType.PROACTIVE_SUGGESTION, 600
+        ):
+            return None
+
+        text = str(memory.get("text", "")).strip()
+        if not text:
+            return None
+
+        self._cooldowns[cooldown_key] = now
+        type_key = InterventionType.PROACTIVE_SUGGESTION.value
+        self._intervention_counts[type_key] = (
+            self._intervention_counts.get(type_key, 0) + 1
+        )
+
+        return {
+            "message": (
+                f"By the way, you mentioned '{text}' before. Want to pick that back up?"
+            ),
+            "character_emotion": "curious",
+            "type": InterventionType.PROACTIVE_SUGGESTION,
+            "confidence": 0.6,
+        }
+
 
 # =============================================================
 # SESSION MEMORY
 # =============================================================
+
 
 class SessionMemory:
     """
     Remembers meaningful events during the current session.
     Used for natural continuity in companion reactions.
     """
+
     def __init__(self, max_events: int = 50):
         self._events: list[dict] = []
         self._max = max_events
@@ -1192,12 +1550,14 @@ class SessionMemory:
 
     def record(self, event_type: str, description: str, metadata: dict = None):
         with self._lock:
-            self._events.append({
-                "type": event_type,
-                "description": description,
-                "metadata": metadata or {},
-                "timestamp": time.time(),
-            })
+            self._events.append(
+                {
+                    "type": event_type,
+                    "description": description,
+                    "metadata": metadata or {},
+                    "timestamp": time.time(),
+                }
+            )
             if len(self._events) > self._max:
                 self._events.pop(0)
 
@@ -1213,7 +1573,8 @@ class SessionMemory:
         with self._lock:
             now = time.time()
             return any(
-                e.get("type") == event_type and (now - e.get("timestamp", 0)) < within_seconds
+                e.get("type") == event_type
+                and (now - e.get("timestamp", 0)) < within_seconds
                 for e in self._events
             )
 
@@ -1226,11 +1587,13 @@ class SessionMemory:
 # COOLDOWN MANAGER
 # =============================================================
 
+
 class CooldownManager:
     """
     Manages cooldowns for companion interventions.
     Prevents spam and ensures natural timing.
     """
+
     def __init__(self):
         self._cooldowns: dict[str, float] = {}
         self._last_hour_check: float = time.time()
@@ -1264,17 +1627,19 @@ class CooldownManager:
 # CONTEXTUAL DIALOGUE GENERATOR
 # =============================================================
 
+
 class ContextualDialogueGenerator:
     """
     Generates speech based on REAL detected context, not random questions.
     Uses activity type, window title, process, errors, successes, and time.
     """
+
     def __init__(self, personality: str = "friendly"):
         self._personality = personality
         self._recent_contexts: list[str] = []
         self._max_recent = 20
 
-    def generate(self, context: ContextSnapshot) -> Optional[dict]:
+    def generate(self, context: ContextSnapshot) -> dict | None:
         """
         Generate a contextually appropriate dialogue entry.
         Returns dict with keys: message, character_emotion, type.
@@ -1296,167 +1661,226 @@ class ContextualDialogueGenerator:
         # CODING CONTEXTS
         if activity == "coding":
             if state == UserState.STUCK:
-                return self._pick({
-                    "message": random.choice([
-                        "I see you fighting something in the code 😭 Want a hand debugging?",
-                        "That error is stubborn, bro. Want me to take a look?",
-                        "Stuck on a bug? Describe it and I'll help you squash it 🐛",
-                    ]),
-                    "emotion": "thinking",
-                    "type": InterventionType.CONTEXT_QUERY,
-                })
+                return self._pick(
+                    {
+                        "message": random.choice(
+                            [
+                                "I see you fighting something in the code 😭 Want a hand debugging?",
+                                "That error is stubborn, bro. Want me to take a look?",
+                                "Stuck on a bug? Describe it and I'll help you squash it 🐛",
+                            ]
+                        ),
+                        "emotion": "thinking",
+                        "type": InterventionType.CONTEXT_QUERY,
+                    }
+                )
             if state == UserState.SUCCEEDING:
-                return self._pick({
-                    "message": random.choice([
-                        "YOOOO 🔥 you fixed it! That's awesome!",
-                        "Build passing? You're on fire today 🚀",
-                        "Code's looking clean! Great work bro 💪",
-                    ]),
-                    "emotion": "happy",
-                    "type": InterventionType.CELEBRATION,
-                })
+                return self._pick(
+                    {
+                        "message": random.choice(
+                            [
+                                "YOOOO 🔥 you fixed it! That's awesome!",
+                                "Build passing? You're on fire today 🚀",
+                                "Code's looking clean! Great work bro 💪",
+                            ]
+                        ),
+                        "emotion": "happy",
+                        "type": InterventionType.CELEBRATION,
+                    }
+                )
             if duration > 35:
-                return self._pick({
-                    "message": random.choice([
-                        "Bro, you've been coding for a while 😭 Tiny break? 👀",
-                        "Keyboard warrior! Take a 2-minute breather, you've earned it 🧘",
-                        "Focus mode is strong, but don't forget to stretch! 💻🧘",
-                    ]),
-                    "emotion": "concerned",
-                    "type": InterventionType.BREAK_REMINDER,
-                })
-            if "git" in process or "github" in process or "push" in title or "pull" in title:
-                return self._pick({
-                    "message": "Git operations detected 📦 Let me know if you need help with branches or merges!",
-                    "emotion": "curious",
-                    "type": InterventionType.SUBTLE_HINT,
-                })
+                return self._pick(
+                    {
+                        "message": random.choice(
+                            [
+                                "Bro, you've been coding for a while 😭 Tiny break? 👀",
+                                "Keyboard warrior! Take a 2-minute breather, you've earned it 🧘",
+                                "Focus mode is strong, but don't forget to stretch! 💻🧘",
+                            ]
+                        ),
+                        "emotion": "concerned",
+                        "type": InterventionType.BREAK_REMINDER,
+                    }
+                )
+            if (
+                "git" in process
+                or "github" in process
+                or "push" in title
+                or "pull" in title
+            ):
+                return self._pick(
+                    {
+                        "message": "Git operations detected 📦 Let me know if you need help with branches or merges!",
+                        "emotion": "curious",
+                        "type": InterventionType.SUBTLE_HINT,
+                    }
+                )
             if "error" in title or "exception" in title or "traceback" in title:
-                return self._pick({
-                    "message": "Error alert 🚨 Sounds painful. Want me to help figure out what's going on?",
-                    "emotion": "sympathetic",
-                    "type": InterventionType.CONTEXT_QUERY,
-                })
+                return self._pick(
+                    {
+                        "message": "Error alert 🚨 Sounds painful. Want me to help figure out what's going on?",
+                        "emotion": "sympathetic",
+                        "type": InterventionType.CONTEXT_QUERY,
+                    }
+                )
             if "debug" in title or "debugging" in title:
-                return self._pick({
-                    "message": "Debug mode activated 🐛 I'm here if you need a second pair of eyes!",
-                    "emotion": "thinking",
-                    "type": InterventionType.SUBTLE_HINT,
-                })
+                return self._pick(
+                    {
+                        "message": "Debug mode activated 🐛 I'm here if you need a second pair of eyes!",
+                        "emotion": "thinking",
+                        "type": InterventionType.SUBTLE_HINT,
+                    }
+                )
 
         # BROWSING CONTEXTS
         if activity == "browsing":
             if state == UserState.LEARNING:
-                return self._pick({
-                    "message": random.choice([
-                        "Research mode? 📚 Want me to summarize anything you find?",
-                        "Found anything juicy? I can help organize notes 👀",
-                        "Deep dive time! Need help filtering out the noise? 🔍",
-                    ]),
-                    "emotion": "curious",
-                    "type": InterventionType.SUBTLE_HINT,
-                })
+                return self._pick(
+                    {
+                        "message": random.choice(
+                            [
+                                "Research mode? 📚 Want me to summarize anything you find?",
+                                "Found anything juicy? I can help organize notes 👀",
+                                "Deep dive time! Need help filtering out the noise? 🔍",
+                            ]
+                        ),
+                        "emotion": "curious",
+                        "type": InterventionType.SUBTLE_HINT,
+                    }
+                )
             if "youtube" in process:
-                return self._pick({
-                    "message": "YouTube rabbit hole? 🎬 No judgment, just let me know if you need info!",
-                    "emotion": "playful",
-                    "type": InterventionType.SUBTLE_HINT,
-                })
+                return self._pick(
+                    {
+                        "message": "YouTube rabbit hole? 🎬 No judgment, just let me know if you need info!",
+                        "emotion": "playful",
+                        "type": InterventionType.SUBTLE_HINT,
+                    }
+                )
             if "shopping" in title or "amazon" in process or "ebay" in process:
-                return self._pick({
-                    "message": "Shopping time? 🛒 Want me to compare anything or keep you company?",
-                    "emotion": "playful",
-                    "type": InterventionType.SUBTLE_HINT,
-                })
+                return self._pick(
+                    {
+                        "message": "Shopping time? 🛒 Want me to compare anything or keep you company?",
+                        "emotion": "playful",
+                        "type": InterventionType.SUBTLE_HINT,
+                    }
+                )
 
         # STUDYING CONTEXTS
         if activity == "studying":
             if state == UserState.FOCUSED:
-                return self._pick({
-                    "message": None,
-                    "emotion": "calm",
-                    "type": InterventionType.SILENT_AWARENESS,
-                })
+                return self._pick(
+                    {
+                        "message": None,
+                        "emotion": "calm",
+                        "type": InterventionType.SILENT_AWARENESS,
+                    }
+                )
             if state == UserState.STUCK:
-                return self._pick({
-                    "message": random.choice([
-                        "This concept is fighting back 😤 Want me to explain it differently?",
-                        "Stuck on a topic? I can break it down in a totally different way!",
-                    ]),
-                    "emotion": "thinking",
-                    "type": InterventionType.ENCOURAGEMENT,
-                })
+                return self._pick(
+                    {
+                        "message": random.choice(
+                            [
+                                "This concept is fighting back 😤 Want me to explain it differently?",
+                                "Stuck on a topic? I can break it down in a totally different way!",
+                            ]
+                        ),
+                        "emotion": "thinking",
+                        "type": InterventionType.ENCOURAGEMENT,
+                    }
+                )
             if "pdf" in process or "acrobat" in process or "reader" in process:
-                return self._pick({
-                    "message": "PDF reading time 📖 Want me to explain anything from the document?",
-                    "emotion": "curious",
-                    "type": InterventionType.SUBTLE_HINT,
-                })
+                return self._pick(
+                    {
+                        "message": "PDF reading time 📖 Want me to explain anything from the document?",
+                        "emotion": "curious",
+                        "type": InterventionType.SUBTLE_HINT,
+                    }
+                )
             if "quiz" in title or "flashcard" in title or "anki" in process:
-                return self._pick({
-                    "message": "Study session in progress! You crushing it or wanna quiz some more? 🧠",
-                    "emotion": "excited",
-                    "type": InterventionType.ENCOURAGEMENT,
-                })
+                return self._pick(
+                    {
+                        "message": "Study session in progress! You crushing it or wanna quiz some more? 🧠",
+                        "emotion": "excited",
+                        "type": InterventionType.ENCOURAGEMENT,
+                    }
+                )
 
         # GAMING CONTEXTS
         if activity == "gaming":
             if state == UserState.FOCUSED:
-                return self._pick({
-                    "message": None,
-                    "emotion": "excited",
-                    "type": InterventionType.SILENT_AWARENESS,
-                })
+                return self._pick(
+                    {
+                        "message": None,
+                        "emotion": "excited",
+                        "type": InterventionType.SILENT_AWARENESS,
+                    }
+                )
             if state == UserState.FRUSTRATED:
-                return self._pick({
-                    "message": "That game giving you a hard time? 😤 Tips incoming if you want!",
-                    "emotion": "sympathetic",
-                    "type": InterventionType.CONTEXT_QUERY,
-                })
+                return self._pick(
+                    {
+                        "message": "That game giving you a hard time? 😤 Tips incoming if you want!",
+                        "emotion": "sympathetic",
+                        "type": InterventionType.CONTEXT_QUERY,
+                    }
+                )
             if "minecraft" in process or "roblox" in process:
-                return self._pick({
-                    "message": random.choice([
-                        "Building something cool? 🎮 Show me when you're done!",
-                        "Gaming vibes! Just don't forget to hydrate 💧",
-                    ]),
-                    "emotion": "playful",
-                    "type": InterventionType.SUBTLE_HINT,
-                })
+                return self._pick(
+                    {
+                        "message": random.choice(
+                            [
+                                "Building something cool? 🎮 Show me when you're done!",
+                                "Gaming vibes! Just don't forget to hydrate 💧",
+                            ]
+                        ),
+                        "emotion": "playful",
+                        "type": InterventionType.SUBTLE_HINT,
+                    }
+                )
 
         # WORKING CONTEXTS
         if activity == "working":
             if state == UserState.FOCUSED:
-                return self._pick({
-                    "message": None,
-                    "emotion": "calm",
-                    "type": InterventionType.SILENT_AWARENESS,
-                })
+                return self._pick(
+                    {
+                        "message": None,
+                        "emotion": "calm",
+                        "type": InterventionType.SILENT_AWARENESS,
+                    }
+                )
             if duration > 40:
-                return self._pick({
-                    "message": "Work grind is real 💼 Want me to set a focus timer or play some lo-fi?",
-                    "emotion": "concerned",
-                    "type": InterventionType.BREAK_REMINDER,
-                })
+                return self._pick(
+                    {
+                        "message": "Work grind is real 💼 Want me to set a focus timer or play some lo-fi?",
+                        "emotion": "concerned",
+                        "type": InterventionType.BREAK_REMINDER,
+                    }
+                )
 
         # IDLE / RETURN CONTEXTS
         if activity == "idle" and context.idle_minutes > 10:
-            return self._pick({
-                "message": random.choice([
-                    "You vanished 👀 Everything okay?",
-                    "Welcome back brooo 😄 What were we doing?",
-                    "Back from the void! Need anything?",
-                ]),
-                "emotion": "happy",
-                "type": InterventionType.CHECK_IN,
-            })
+            return self._pick(
+                {
+                    "message": random.choice(
+                        [
+                            "You vanished 👀 Everything okay?",
+                            "Welcome back brooo 😄 What were we doing?",
+                            "Back from the void! Need anything?",
+                        ]
+                    ),
+                    "emotion": "happy",
+                    "type": InterventionType.CHECK_IN,
+                }
+            )
 
         # LONG SESSION
         if session > 120:
-            return self._pick({
-                "message": "You've been at this for 2+ hours straight! 😭 I'm proud, but seriously, take a break!",
-                "emotion": "concerned",
-                "type": InterventionType.BREAK_REMINDER,
-            })
+            return self._pick(
+                {
+                    "message": "You've been at this for 2+ hours straight! 😭 I'm proud, but seriously, take a break!",
+                    "emotion": "concerned",
+                    "type": InterventionType.BREAK_REMINDER,
+                }
+            )
 
         return None
 
@@ -1465,13 +1889,18 @@ class ContextualDialogueGenerator:
         if isinstance(options, dict):
             return options
         if not options:
-            return {"message": None, "emotion": "neutral", "type": InterventionType.SILENT_AWARENESS}
+            return {
+                "message": None,
+                "emotion": "neutral",
+                "type": InterventionType.SILENT_AWARENESS,
+            }
         return random.choice(options)
 
 
 # =============================================================
 # COMPANION INTELLIGENCE - MAIN CONTROLLER
 # =============================================================
+
 
 class CompanionIntelligence:
     """
@@ -1503,12 +1932,12 @@ class CompanionIntelligence:
         self._personality = personality
 
         # Observation callbacks
-        self._emotion_callbacks: list[Callable] = []     # called on emotion change
+        self._emotion_callbacks: list[Callable] = []  # called on emotion change
         self._intervention_callbacks: list[Callable] = []  # called on intervention
-        self._achievement_callbacks: list[Callable] = []   # called on achievement
+        self._achievement_callbacks: list[Callable] = []  # called on achievement
 
         # Last observation
-        self._last_observation: Optional[dict] = None
+        self._last_observation: dict | None = None
 
         # Anti-annoyance: track what we've done recently
         self._recent_interventions: list[dict] = []
@@ -1582,9 +2011,15 @@ class CompanionIntelligence:
     # MAIN CYCLE
     # =========================================================
 
-    def cycle(self, activity_type: str, window_title: str = "",
-              process_name: str = "", idle_minutes: float = 0.0,
-              is_processing: bool = False, is_voice_active: bool = False) -> dict:
+    def cycle(
+        self,
+        activity_type: str,
+        window_title: str = "",
+        process_name: str = "",
+        idle_minutes: float = 0.0,
+        is_processing: bool = False,
+        is_voice_active: bool = False,
+    ) -> dict:
         """
         Main update cycle - call this every monitor tick.
         Runs all sub-systems and returns an observation dict.
@@ -1630,7 +2065,10 @@ class CompanionIntelligence:
             }
 
             # Do detailed analysis less frequently
-            if now - self._last_detailed_analysis >= self._detailed_analysis_interval or self._cycle_count <= 5:
+            if (
+                now - self._last_detailed_analysis >= self._detailed_analysis_interval
+                or self._cycle_count <= 5
+            ):
                 self._last_detailed_analysis = now
                 detailed = self._run_detailed_analysis(snapshot, current_mood)
                 observation.update(detailed)
@@ -1640,10 +2078,16 @@ class CompanionIntelligence:
                     if observation.get("intervention"):
                         msg = observation["intervention"].get("message", "")
                         if msg:
-                            self.session_memory.record("intervention", msg, {
-                                "activity": snapshot.activity_type,
-                                "state": snapshot.user_state.value if hasattr(snapshot.user_state, "value") else str(snapshot.user_state),
-                            })
+                            self.session_memory.record(
+                                "intervention",
+                                msg,
+                                {
+                                    "activity": snapshot.activity_type,
+                                    "state": snapshot.user_state.value
+                                    if hasattr(snapshot.user_state, "value")
+                                    else str(snapshot.user_state),
+                                },
+                            )
                     if observation.get("new_achievement"):
                         title = observation["new_achievement"].get("title", "")
                         if title:
@@ -1674,8 +2118,9 @@ class CompanionIntelligence:
             self._last_observation = observation
             return observation
 
-    def _run_detailed_analysis(self, snapshot: ContextSnapshot,
-                                mood: CompanionMood) -> dict:
+    def _run_detailed_analysis(
+        self, snapshot: ContextSnapshot, mood: CompanionMood
+    ) -> dict:
         """
         Detailed analysis run periodically.
         Checks goals, achievements, and proactive suggestions.
@@ -1696,7 +2141,9 @@ class CompanionIntelligence:
             for goal in active_goals:
                 goal_activity = goal.get("context", {}).get("activity_type", "")
                 if goal_activity == snapshot.activity_type:
-                    completed = self.goals.update_goal_progress(goal["description"], 0.02)
+                    completed = self.goals.update_goal_progress(
+                        goal["description"], 0.02
+                    )
                     if completed:
                         achievement = {
                             "title": f"Goal Complete: {goal['description']}",
@@ -1712,7 +2159,11 @@ class CompanionIntelligence:
             milestone_minutes = [30, 60, 120, 180]
             for mins in milestone_minutes:
                 if abs(snapshot.activity_duration_minutes - mins) < 1.0:
-                    if snapshot.user_state in (UserState.FOCUSED, UserState.CREATING, UserState.LEARNING):
+                    if snapshot.user_state in (
+                        UserState.FOCUSED,
+                        UserState.CREATING,
+                        UserState.LEARNING,
+                    ):
                         achievement = {
                             "title": f"{mins} Minute Focus Streak",
                             "description": f"You've been focused for {mins} minutes straight! 🔥",
@@ -1725,19 +2176,49 @@ class CompanionIntelligence:
                             self.goals.add_achievement(**achievement)
                             result["new_achievement"] = achievement
 
-        # 3. Proactive suggestion / contextual dialogue
+        # 3. Proactive suggestion / contextual dialogue (respect DND / settings)
+        # Respect DND / disabled proactive settings — no suggestion at all
+        try:
+            from settings import get_setting
+            if get_setting("notifications.do_not_disturb", False) or not get_setting("companion.proactive_messages", True):
+                result["session_summary"] = self.context.get_session_summary()
+                return result
+        except Exception:
+            pass
         if not self.is_silent_mode():
             suggestion = None
 
             # First try context-aware dialogue generator
             try:
                 suggestion = self.dialogue_generator.generate(snapshot)
-            except Exception as e:
-                logger.debug(f"Contextual dialogue error: {e}")
+            except Exception as exc:
+                logger.debug(f"Contextual dialogue error: {exc}")
 
             # Fall back to ProactiveSuggester
             if not suggestion:
                 suggestion = self.suggester.get_suggestion(snapshot, mood)
+
+            # V2: Goal continuation suggestion (idle-but-not-abandoned goal)
+            if not suggestion:
+                try:
+                    candidate = self.goals.get_continuation_candidate()
+                    if candidate:
+                        suggestion = self.suggester.get_goal_suggestion(candidate)
+                except Exception as exc:
+                    logger.debug(f"Goal suggestion error: {exc}")
+
+            # V2: Journey memory recall suggestion
+            if not suggestion:
+                try:
+                    from memory import get_journey_memories
+
+                    memories = get_journey_memories(min_importance=0.6)[:1]
+                    if memories:
+                        suggestion = self.suggester.get_memory_recall_suggestion(
+                            memories[0]
+                        )
+                except Exception as exc:
+                    logger.debug(f"Memory recall suggestion error: {exc}")
 
             if suggestion:
                 # Check message cooldown
@@ -1764,7 +2245,10 @@ class CompanionIntelligence:
                         result["intervention"] = break_reminder
 
         # 4. Session summary (every 30 minutes of session)
-        if int(snapshot.session_duration_minutes) % 30 == 0 and snapshot.session_duration_minutes > 0:
+        if (
+            int(snapshot.session_duration_minutes) % 30 == 0
+            and snapshot.session_duration_minutes > 0
+        ):
             if self._cycle_count < 10:  # Only once per milestone
                 result["session_summary"] = self.context.get_session_summary()
 
@@ -1803,20 +2287,28 @@ class CompanionIntelligence:
             (r"(?:need to|have to|gotta|should)\s+(.+)", "task"),
         ]
         import re
+
         for pattern, category in goal_patterns:
             match = re.search(pattern, message.lower())
             if match:
                 goal_desc = match.group(1).strip().capitalize()
                 if len(goal_desc) > 3:
                     self.goals.set_active_goal(
-                        goal_desc, category=category,
-                        context={"source": "user_message", "activity_type": self.context.get_snapshot().activity_type}
+                        goal_desc,
+                        category=category,
+                        context={
+                            "source": "user_message",
+                            "activity_type": self.context.get_snapshot().activity_type,
+                        },
                     )
 
     def on_ai_response(self, response: str):
         """Called after AI responds."""
         # If response was helpful, boost mood
-        if any(word in response.lower() for word in ["solved", "fixed", "done", "here's how", "finished"]):
+        if any(
+            word in response.lower()
+            for word in ["solved", "fixed", "done", "here's how", "finished"]
+        ):
             self.emotion.boost(0.2)
             self.emotion.set_mood(CompanionMood.HAPPY, 0.6)
 
@@ -1838,7 +2330,7 @@ class CompanionIntelligence:
     # OBSERVATION ACCESS
     # =========================================================
 
-    def get_last_observation(self) -> Optional[dict]:
+    def get_last_observation(self) -> dict | None:
         with self._lock:
             return self._last_observation
 
@@ -1866,11 +2358,11 @@ class CompanionIntelligence:
 # GLOBAL INSTANCE
 # =============================================================
 
-_companion: Optional[CompanionIntelligence] = None
+_companion: CompanionIntelligence | None = None
 _companion_lock = threading.Lock()
 
 
-def get_companion_intelligence() -> Optional[CompanionIntelligence]:
+def get_companion_intelligence() -> CompanionIntelligence | None:
     """Get the global companion intelligence instance."""
     global _companion
     if _companion is None:
@@ -1878,3 +2370,14 @@ def get_companion_intelligence() -> Optional[CompanionIntelligence]:
             if _companion is None:
                 _companion = CompanionIntelligence()
     return _companion
+
+
+def set_companion_intelligence(instance: CompanionIntelligence | None) -> None:
+    """Register an existing CompanionIntelligence as the global singleton.
+
+    Used by MainWindow so context_provider and the running companion share one
+    unified state. Pass None to clear the singleton (e.g. on shutdown).
+    """
+    global _companion
+    with _companion_lock:
+        _companion = instance

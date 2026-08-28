@@ -1,29 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { hasValidSession, verifyPassword, isLockedOut, getLockoutRemaining, getFailedAttempts } from '../lib/admin';
 
 export function Footer() {
   const [showLogin, setShowLogin] = useState(false);
 
-  useEffect(() => {
-    const handlePopState = () => {
-      if (window.location.hash === '#/admin') {
-        if (!hasValidSession()) {
-          window.location.hash = '';
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    window.addEventListener('hashchange', handlePopState);
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('hashchange', handlePopState);
-    };
-  }, []);
+  // NOTE: no hash guard here. Route protection is owned by App.tsx
+  // (renders AdminLogin for unauthenticated #/admin) and by
+  // AdminDashboardPage. Clearing the hash from a global listener made it
+  // impossible to reach the admin login screen via a direct URL.
 
   const handleDeveloperClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -43,31 +30,75 @@ export function Footer() {
 
   return (
     <>
-      <footer className="relative border-t border-white/[0.06] py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <span
+      <motion.footer
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-80px' }}
+        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+        className="relative border-t border-white/[0.06] py-12 overflow-hidden"
+      >
+        <div className="absolute inset-0 pointer-events-none">
+          <motion.div
+            className="absolute -top-20 left-1/2 -translate-x-1/2 w-[min(600px,92vw)] h-[200px] rounded-full bg-blue-500/5 blur-3xl"
+            animate={{ scale: [1, 1.05, 1], opacity: [0.5, 0.7, 0.5] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </div>
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+          <motion.div
+            className="flex flex-col items-center gap-4 text-center"
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+            variants={{
+              hidden: {},
+              show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
+            }}
+          >
+            <motion.span
+              variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } } }}
               onClick={handleDeveloperClick}
-              className="text-xl font-bold text-white cursor-pointer hover:text-blue-300 transition-all duration-300 relative group inline-block"
+              className="text-xl font-bold text-white cursor-pointer hover:text-blue-300 transition-all duration-300 relative group inline-block hover-lift"
+              whileHover={{ y: -2 }}
             >
               AVORA AI
               <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 group-hover:w-full transition-all duration-300" />
-            </span>
-            <p className="text-xs leading-relaxed text-gray-500 max-w-md">
+            </motion.span>
+            <motion.p
+              variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } } }}
+              className="text-xs leading-relaxed text-gray-500 max-w-md"
+            >
               Built with passion by AVORA AI co-founders Pratik Ojha and Atharba Bhandari. Independent AI project built with passion in Nepal.
-            </p>
-            <p className="text-[11px] text-gray-600">
+            </motion.p>
+            <motion.p
+              variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } } }}
+              className="text-[11px] text-gray-600"
+            >
               © {new Date().getFullYear()} AVORA. Independent project. Not a company.
-            </p>
-            <button
+            </motion.p>
+            <motion.p
+              variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } } }}
+              className="text-[11px] leading-relaxed text-gray-600 max-w-md"
+            >
+              Disclaimer: AVORA uses context-aware communication. It adapts its tone to your
+              communication style and mood — with casual users it may occasionally use mild slang
+              where appropriate, while staying respectful and avoiding rough language in professional,
+              formal, serious, upset, or sensitive conversations. Tone is always adaptive and
+              context-dependent, never forced. AVORA may still make mistakes, so please verify
+              important information.
+            </motion.p>
+            <motion.button
+              variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } } }}
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="text-gray-500 hover:text-white transition-colors text-sm"
+              className="text-gray-500 hover:text-white transition-colors text-sm hover-lift"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
             >
               Back to Top ↑
-            </button>
-          </div>
+            </motion.button>
+          </motion.div>
         </div>
-      </footer>
+      </motion.footer>
 
       {showLogin && <LoginOverlay onClose={() => setShowLogin(false)} onSuccess={handleLoginSuccess} />}
     </>

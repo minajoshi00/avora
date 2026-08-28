@@ -10,8 +10,8 @@ export function PrivacySection() {
 
   return (
     <section id="privacy" className="relative py-32 overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-emerald-500/3 blur-3xl" />
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(800px,92vw)] h-[min(800px,92vw)] rounded-full bg-emerald-500/3 blur-3xl avora-drift" />
       </div>
 
       <div className="max-w-6xl mx-auto px-6">

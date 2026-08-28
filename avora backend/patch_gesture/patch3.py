@@ -1,0 +1,95 @@
+# 5. mouseReleaseEvent + helpers
+replace_once(
+    """    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if not self.dragging and self._press_pos is not None:
+                dist = (event.pos() - self._press_pos).manhattanLength()
+                elapsed = time.time() - self._press_time
+                if dist < 8 and elapsed < 0.45:
+                    self.clicked.emit()
+        self.dragging = False
+        self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
+        self._press_pos = None
+        super().mouseReleaseEvent(event)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.restore_requested.emit()""",
+    '    def mouseReleaseEvent(self, event):\n'
+    '        if event.button() == Qt.MouseButton.LeftButton:\n'
+    '            if not self.dragging and self._press_pos is not None:\n'
+    '                dist = (event.pos() - self._press_pos).manhattanLength()\n'
+    '                elapsed = time.time() - self._press_time\n'
+    '                if dist < 8 and elapsed < 0.45:\n'
+    '                    self.clicked.emit()\n'
+    '        self.dragging = False\n'
+    '        self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))\n'
+    '        self._press_pos = None\n'
+    '\n'
+    '        # Handle drag-down-to-close gesture completion\n'
+    '        if self.is_dragging_downward and self.close_gesture_in_progress:\n'
+    '            delta_y = event.pos().y() - self.drag_start_y\n'
+    '            if delta_y >= self.close_threshold:\n'
+    '                self._close_avora()\n'
+    '            else:\n'
+    '                self._return_to_position()\n'
+    '        elif self.is_dragging_sideways:\n'
+    '            self._hide_close_indicator()\n'
+    '\n'
+    '        # Reset gesture state\n'
+    '        self.close_gesture_in_progress = False\n'
+    '        self.is_dragging_downward = False\n'
+    '        self.is_dragging_sideways = False\n'
+    '        if not getattr(self, "_anim_timer", None) or not self._anim_timer.isActive():\n'
+    '            self.close_x_visible = False\n'
+    '            self.close_x_scale = 1.0\n'
+    '            self.close_x_opacity = 0.0\n'
+    '        self.update()\n'
+    '        super().mouseReleaseEvent(event)\n'
+    '        if event.button() == Qt.MouseButton.LeftButton:\n'
+    '            self.restore_requested.emit()\n'
+    '\n'
+    '    def _close_avora(self):\n'
+    '        """Animate AVORA toward the close target and close."""\n'
+    '        self._animate_to_position(self.x(), self.y() + 200, 200, self.close)\n'
+    '\n'
+    '    def _return_to_position(self):\n'
+    '        """Smoothly animate AVORA back to its original position."""\n'
+    '        target_x = self._original_pos_x\n'
+    '        target_y = self._original_pos_y\n'
+    '        self._animate_to_position(target_x, target_y, 300, self._hide_close_indicator)\n'
+    '\n'
+    '    def _animate_to_position(self, target_x, target_y, duration_ms, callback=None):\n'
+    '        """Smoothly animate window position using a QTimer loop."""\n'
+    '        self._anim_target_x = target_x\n'
+    '        self._anim_target_y = target_y\n'
+    '        self._anim_start_x = self.x()\n'
+    '        self._anim_start_y = self.y()\n'
+    '        self._anim_duration = duration_ms\n'
+    '        self._anim_elapsed = 0\n'
+    '        self._anim_callback = callback\n'
+    '        self._anim_timer = QTimer(self)\n'
+    '        self._anim_timer.timeout.connect(self._tick_animation)\n'
+    '        self._anim_timer.start(16)\n'
+    '\n'
+    '    def _tick_animation(self):\n'
+    '        """Animation tick for smooth position interpolation."""\n'
+    '        self._anim_elapsed += 16\n'
+    '        t = min(1.0, self._anim_elapsed / self._anim_duration)\n'
+    '        eased = 1 - (1 - t) ** 3\n'
+    '        x = int(self._anim_start_x + (self._anim_target_x - self._anim_start_x) * eased)\n'
+    '        y = int(self._anim_start_y + (self._anim_target_y - self._anim_start_y) * eased)\n'
+    '        self.move(x, y)\n'
+    '        if t >= 1.0:\n'
+    '            self._anim_timer.stop()\n'
+    '            self._anim_timer.deleteLater()\n'
+    '            self._anim_timer = None\n'
+    '            if self._anim_callback:\n'
+    '                self._anim_callback()\n'
+    '\n'
+    '    def _hide_close_indicator(self):\n'
+    '        """Hide the close indicator (X)."""\n'
+    '        self.close_x_visible = False\n'
+    '        self.close_x_scale = 1.0\n'
+    '        self.close_x_opacity = 0.0\n'
+    '        self.update()',
+    "mouseReleaseEvent_and_helpers",
+)

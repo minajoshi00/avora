@@ -95,7 +95,7 @@ def generate_image(prompt):
 
         return {
             "type": "error",
-            "message": "Brooo 😭 tell me what image you want me to generate.",
+            "message": "I 😭 tell me what image you want me to generate.",
         }
 
 
@@ -106,7 +106,7 @@ def generate_image(prompt):
 
         return {
             "type": "error",
-            "message": "Brooo 😭 please describe the image.",
+            "message": "I 😭 please describe the image.",
         }
 
 
@@ -146,14 +146,14 @@ def generate_image(prompt):
             print("[IMAGE ERROR]", response.status_code, response.text[:500])
             return {
                 "type": "error",
-                "message": f"Brooo 😭 image generation failed. Server returned status {response.status_code}.",
+                "message": f"I 😭 image generation failed. Server returned status {response.status_code}.",
             }
 
         content_type = response.headers.get("content-type", "")
         if not response.content:
             return {
                 "type": "error",
-                "message": "Brooo 😭 the image generator returned an empty image.",
+                "message": "I 😭 the image generator returned an empty image.",
             }
 
         if not content_type.startswith("image/"):
@@ -162,7 +162,7 @@ def generate_image(prompt):
                 print("[IMAGE] Unexpected response body:", text_body[:400])
                 return {
                     "type": "error",
-                    "message": "Brooo 😭 the image service returned an unexpected response.",
+                    "message": "I 😭 the image service returned an unexpected response.",
                 }
 
         image_path = create_image_filename()
@@ -183,20 +183,20 @@ def generate_image(prompt):
     except requests.exceptions.Timeout:
         return {
             "type": "error",
-            "message": "Brooo 😭 image generation took too long and timed out.",
+            "message": "I 😭 image generation took too long and timed out.",
         }
 
     except requests.exceptions.ConnectionError:
         return {
             "type": "error",
-            "message": "Brooo 😭 I couldn't connect to the image-generation service.",
+            "message": "I 😭 I couldn't connect to the image-generation service.",
         }
 
     except Exception as error:
         print("[IMAGE GENERATION ERROR]", error)
         return {
             "type": "error",
-            "message": "Brooo 😭 something went wrong while generating the image.",
+            "message": "I 😭 something went wrong while generating the image.",
         }
 
 

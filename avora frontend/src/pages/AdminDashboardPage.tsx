@@ -13,10 +13,11 @@ import { DownloadAnalyticsSection } from '../components/admin/DownloadAnalyticsS
 import { SystemHealthSection } from '../components/admin/SystemHealthSection';
 import { ChangelogManager } from '../components/admin/ChangelogManager';
 import { SearchSection } from '../components/admin/SearchSection';
+import { MaintenanceManagementPanel } from '../components/admin/MaintenanceManagementPanel';
 import {
-  LayoutDashboard, Users, MessageSquare, Lightbulb, Bug, Download, Activity,
-  RefreshCw, Search, LogOut, ChevronRight, BarChart3, User, Shield,
-  History,
+        LayoutDashboard, Users, MessageSquare, Lightbulb, Bug, Download, Activity,
+        RefreshCw, Search, LogOut, ChevronRight, BarChart3, User, Shield,
+        History, Wrench,
 } from 'lucide-react';
 import { useAnalyticsSummary } from '../hooks/useAnalyticsSummary';
 import { LoadingState, ErrorState, EmptyState } from '../components/admin/AnalyticsStates';
@@ -25,7 +26,7 @@ import { formatCount, formatRate, type Range } from '../lib/analytics-client';
 type Section =
   | 'overview' | 'users' | 'feedback' | 'features' | 'bugs'
   | 'downloads' | 'health' | 'changelog' | 'updates' | 'search'
-  | 'analytics' | 'visitors';
+  | 'analytics' | 'visitors' | 'maintenance';
 
 const sections: { id: Section; label: string; icon: any }[] = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
@@ -39,6 +40,7 @@ const sections: { id: Section; label: string; icon: any }[] = [
   { id: 'changelog', label: '📜 Logs', icon: History },
   { id: 'updates', label: '📈 Charts', icon: RefreshCw },
   { id: 'search', label: 'Recent Activity', icon: Search },
+  { id: 'maintenance', label: '🔧 Maintenance Mode', icon: Wrench },
 ];
 
 const sectionLabels: Record<Section, string> = {
@@ -54,6 +56,7 @@ const sectionLabels: Record<Section, string> = {
   changelog: 'Logs',
   updates: 'Charts',
   search: 'Recent Activity',
+  maintenance: 'Maintenance Mode',
 };
 
 export default function AdminDashboardPage() {
@@ -203,6 +206,7 @@ function renderSection(section: Section) {
     case 'search': return <SearchSection />;
     case 'analytics': return <AnalyticsSection />;
     case 'visitors': return <VisitorsSection />;
+    case 'maintenance': return <MaintenanceManagementPanel />;
     default: return <OverviewSection />;
   }
 }
@@ -320,12 +324,21 @@ function ChartsSection() {
   );
 }
 
+const cardColorMap: Record<string, { bg: string; border: string; text: string }> = {
+  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400' },
+  purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-400' },
+  emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
+  cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', text: 'text-cyan-400' },
+  red: { bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400' },
+  yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', text: 'text-yellow-400' },
+};
 function Card({ icon: Icon, color, label, value, delta }: { icon: any; color: string; label: string; value: string; delta?: { text: string; positive: boolean } }) {
+  const cm = cardColorMap[color] || cardColorMap.blue;
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl p-6">
       <div className="flex items-center gap-3 mb-3">
-        <div className={`p-2 rounded-lg bg-${color}-500/10 border border-${color}-500/20`}>
-          <Icon size={16} className={`text-${color}-400`} />
+        <div className={`p-2 rounded-lg ${cm.bg} border ${cm.border}`}>
+          <Icon size={16} className={cm.text} />
         </div>
         <p className="text-xs text-gray-500">{label}</p>
       </div>
@@ -353,7 +366,7 @@ function MiniBars({ labels, values }: { labels: string[]; values: number[] }) {
   return (
     <div className="h-48 flex items-end justify-between gap-2">
       {values.map((v, i) => (
-        <div key={labels[i]} className="flex-1 flex flex-col items-center">
+        <div key={labels[i]} className="flex flex-col items-center">
           <div className="w-full rounded-t bg-gradient-to-t from-blue-500 to-purple-500"
             style={{ height: `${Math.max(2, (v / max) * 100)}%` }} title={`${labels[i]}: ${v}`} />
           <span className="text-[9px] text-gray-600 mt-1">{labels[i]?.slice(8) || ''}</span>

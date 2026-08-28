@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
-import { InteractiveBackground } from './components/ui/InteractiveBackground';
 import { CursorGlow } from './components/interactions/CursorGlow';
 import { CustomCursor } from './components/interactions/CustomCursor';
 import { Home } from './pages/Home';
@@ -14,10 +13,34 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import { hasValidSession } from './lib/admin';
 import { initAnalytics, trackPageView } from './lib/analytics';
 import { getAnalyticsEnabled, getAnalyticsConsent } from './lib/storage';
+import { MaintenancePage } from './components/MaintenancePage';
+import { ErrorPage } from './components/ErrorPage';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.hash);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [calmMode, _setCalmMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        return true;
+      }
+      const stored = localStorage.getItem('calmMode');
+      return stored === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const html = document.documentElement;
+      if (calmMode) {
+        html.classList.add('calm');
+      } else {
+        html.classList.remove('calm');
+      }
+    }
+  }, [calmMode]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -38,13 +61,24 @@ export default function App() {
     }
   }, []);
 
-  // Track page views on hash/route changes (real events, consent-gated).
   useEffect(() => {
-    const onRoute = () => trackPageView(window.location.hash || window.location.pathname);
-    window.addEventListener('hashchange', onRoute);
-    return () => window.removeEventListener('hashchange', onRoute);
-  }, []);
+    const checkMaintenance = async () => {
+      try {
+        const res = await fetch('/api/admin/maintenance/status', { cache: 'no-store' });
+        const data = await res.json();
+        setMaintenanceMode(data.maintenanceMode || false);
+        // NOTE: never reload here. Recovery from the maintenance screen is
+        // handled by MaintenancePage (manual/auto refresh). Reloading on
+        // admin routes caused an infinite reload loop.
+      } catch {
+        setMaintenanceMode(false);
+      }
+    };
 
+    checkMaintenance();
+  }, [currentPath]);
+
+  // Admin route logic (evaluated before maintenance gate so admin can recover from maintenance mode)
   const isAdminRoute = currentPath === '#/admin' || currentPath.startsWith('#/admin/');
   const isDashboardRoute = currentPath.startsWith('#/admin/') && currentPath !== '#/admin';
 
@@ -65,9 +99,20 @@ export default function App() {
     }
   }
 
+  if (maintenanceMode) {
+    return <MaintenancePage />;
+  }
+
+  // Handle unknown routes (404)
+  const knownPaths = ['', '#/admin', '#/admin/overview'];
+  const isKnownPath = knownPaths.some(path => currentPath === path || currentPath.startsWith(path));
+  
+  if (!isKnownPath && currentPath !== '' && currentPath !== '#') {
+    return <ErrorPage statusCode={404} />;
+  }
+
   return (
     <>
-      <InteractiveBackground />
       <CursorGlow />
       <CustomCursor />
       <SoundToggle />

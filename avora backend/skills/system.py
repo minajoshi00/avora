@@ -86,7 +86,7 @@ def _error_message(
 
         return (
 
-            f"Brooo, I couldn't {action} 😭\n"
+            f"I couldn't {action} 😭\n"
 
             f"{error}"
 
@@ -95,7 +95,7 @@ def _error_message(
 
     return (
 
-        f"Brooo, I couldn't {action} 😭"
+        f"I couldn't {action} 😭"
 
     )
 
@@ -241,7 +241,7 @@ def get_ram_info():
 
         return (
 
-            "Brooo, install psutil first:\n\n"
+            "install psutil first:\n\n"
 
             "pip install psutil"
 
@@ -292,7 +292,7 @@ def get_cpu_usage():
 
         return (
 
-            "Brooo, install psutil first:\n\n"
+            "install psutil first:\n\n"
 
             "pip install psutil"
 
@@ -557,7 +557,7 @@ def get_battery_status():
 
             return (
 
-                "Brooo, I couldn't detect "
+                "I couldn't detect "
 
                 "a battery 🔋"
 
@@ -600,7 +600,7 @@ def get_battery_status():
 
         return (
 
-            "Brooo, install psutil first:\n\n"
+            "install psutil first:\n\n"
 
             "pip install psutil"
 
@@ -799,7 +799,7 @@ def take_screenshot(
 
         return (
 
-            "Brooo, install pyautogui first:\n\n"
+            "install pyautogui first:\n\n"
 
             "pip install pyautogui"
 
@@ -846,7 +846,7 @@ def lock_computer():
 
             return (
 
-                "Brooo, computer locking is "
+                "computer locking is "
 
                 "currently configured for "
 
@@ -876,7 +876,7 @@ def lock_computer():
 
             else
 
-            "Brooo, I couldn't lock "
+            "I couldn't lock "
 
             "the computer 😭"
 
@@ -927,7 +927,7 @@ def shutdown_computer(
 
             return (
 
-                "Brooo, shutdown is currently "
+                "shutdown is currently "
 
                 "configured for Windows only."
 
@@ -967,7 +967,7 @@ def shutdown_computer(
 
             else
 
-            "Brooo, shutdown could "
+            "shutdown could "
 
             "not be started."
 
@@ -1018,7 +1018,7 @@ def restart_computer(
 
             return (
 
-                "Brooo, restart is currently "
+                "restart is currently "
 
                 "configured for Windows only."
 
@@ -1058,7 +1058,7 @@ def restart_computer(
 
             else
 
-            "Brooo, restart could "
+            "restart could "
 
             "not be started."
 
@@ -1105,7 +1105,7 @@ def cancel_shutdown():
 
             return (
 
-                "Brooo, this feature is "
+                "this feature is "
 
                 "currently configured "
 
@@ -1184,7 +1184,7 @@ def open_settings():
 
             return (
 
-                "Brooo, this feature is "
+                "this feature is "
 
                 "currently configured "
 
@@ -1324,7 +1324,7 @@ def get_full_system_status():
 
         return (
 
-            "Brooo, install psutil first:\n\n"
+            "install psutil first:\n\n"
 
             "pip install psutil"
 

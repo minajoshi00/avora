@@ -36,7 +36,9 @@ from PySide6.QtGui import QFont, QColor, QPalette
 
 from settings import get_setting, set_setting
 from mission_tracker import get_mission_tracker, Mission, Milestone, Task
-from character import react_naturally
+# NOTE: react_naturally is an instance method on character.Character, not a
+# module-level function — it cannot be imported here. It was unused in this
+# file, so the broken import is simply removed.
 
 # =========================================================================
 # EXPORT FUNCTIONALITY

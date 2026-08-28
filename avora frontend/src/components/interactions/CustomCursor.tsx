@@ -29,7 +29,7 @@ export function CustomCursor() {
     let prefersReducedMotion = false;
     try {
       prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    } catch (e) {
+    } catch {
       // Fallback for browsers without matchMedia support
       prefersReducedMotion = false;
     }

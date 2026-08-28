@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -125,15 +126,48 @@ def truncate_title(title: str, max_len: int = 40) -> str:
 
 
 def generate_title_from_messages(messages: list[dict]) -> str:
+    """Derive a short readable topic from the first meaningful user message."""
+
     if not messages:
         return "New Conversation"
+
+    first_user_text = None
     for msg in messages:
         if msg.get("role") == "user":
-            text = msg.get("content", "")
-            return truncate_title(text)
-    first_msg = messages[0]
-    content = first_msg.get("content", "")
-    return truncate_title(content)
+            first_user_text = msg.get("content", "")
+            break
+
+    if not first_user_text:
+        first_user_text = messages[0].get("content", "")
+
+    text = " ".join((first_user_text or "").split()).strip()
+
+    # Strip common filler/greeting prefixes so topics stay meaningful.
+    # Applied repeatedly so stacked phrases ("hey can you help me") reduce
+    # down to the actual topic.
+    for _ in range(3):
+        cleaned = re.sub(
+            r"^(?:hey|hi|hello|yo|hii+|heyy+|please|pls|can you|could you"
+            r"|i want you to|i need you to|i need help with|i want help with"
+            r"|help me with|help me)\b[\s,:-]*",
+            "",
+            topic if _ else text,
+            flags=re.IGNORECASE,
+        ).strip()
+        if not cleaned:
+            break
+        topic = cleaned
+
+    # Prefer ending at the first sentence/line for multi-part prompts.
+    for sep in ["?", ".", "\n"]:
+        idx = topic.find(sep)
+        if 20 <= (idx + 1):
+            topic = topic[: idx + (1 if sep == "?" else 0)]
+            break
+
+    topic = topic.strip().rstrip(",;:-")
+
+    return truncate_title(topic if topic else text, max_len=32)
 
 
 class ChatListTile(QWidget):
@@ -149,32 +183,32 @@ class ChatListTile(QWidget):
 
     def _setup_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setSpacing(8)
         self.setLayout(layout)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setMinimumHeight(60)
+        self.setMinimumHeight(46)
         self.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.icon_label = QLabel("💬")
-        self.icon_label.setFixedWidth(32)
+        self.icon_label.setFixedWidth(24)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setFont(QFont("Segoe UI", 14))
+        self.icon_label.setFont(QFont("Segoe UI", 11))
         layout.addWidget(self.icon_label)
 
         text_container = QWidget()
         text_layout = QVBoxLayout(text_container)
         text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(2)
+        text_layout.setSpacing(1)
 
         self.title_label = QLabel("")
-        self.title_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Medium))
+        self.title_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Medium))
         text_layout.addWidget(self.title_label)
 
         self.preview_label = QLabel("")
-        self.preview_label.setFont(QFont("Segoe UI", 9))
+        self.preview_label.setFont(QFont("Segoe UI", 8))
         self.preview_label.setStyleSheet("color: #858599;")
-        self.preview_label.setMaximumHeight(30)
+        self.preview_label.setMaximumHeight(16)
         text_layout.addWidget(self.preview_label)
 
         layout.addWidget(text_container, 1)

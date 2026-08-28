@@ -91,12 +91,20 @@ export async function trackEvent(
     if (!known.has(k)) extraProps[k] = v;
   }
 
+  // Backend expects: event_type, props, visitor_id
   const payload = {
-    type,
-    user_id: options.user_id || getAnonymousId(),
+    event_type: type,
     visitor_id: options.visitor_id || getVisitorId(),
-    value: options.value ?? 0,
-    props: { ...(options.props || {}), ...extraProps },
+    props: { 
+      ...(options.props || {}), 
+      ...extraProps,
+      // Include type in props for backward compatibility with summary aggregation
+      type,
+      // Include user_id in props for tracking
+      user_id: options.user_id || getAnonymousId(),
+      // Include value if provided
+      ...(options.value !== undefined ? { value: options.value } : {}),
+    },
     created_at: options.created_at,
     event_key:
       options.event_key ||
@@ -104,7 +112,7 @@ export async function trackEvent(
   };
 
   try {
-    const res = await fetch(`${ANALYTICS_API}/events`, {
+    const res = await fetch(`${ANALYTICS_API}/analytics/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

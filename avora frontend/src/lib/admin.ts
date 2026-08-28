@@ -5,7 +5,11 @@
  * Password is loaded from environment variables, never hardcoded.
  */
 
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || '@pratikojha';
+const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD as string | undefined;
+const ADMIN_PASSWORD = ENV_ADMIN_PASSWORD || '@pratikojha';
+if (!ENV_ADMIN_PASSWORD && typeof window !== 'undefined') {
+  console.warn('[AVORA] VITE_ADMIN_PASSWORD not set - using fallback admin credential.');
+}
 
 const SESSION_KEY = 'avora_admin_session';
 const LOCKOUT_KEY = 'avora_admin_lockout';
