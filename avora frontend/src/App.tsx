@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { CursorGlow } from './components/interactions/CursorGlow';
@@ -8,13 +8,15 @@ import { SoundToggle } from './components/ui/SoundToggle';
 import { FirstRunExperience } from './components/modals/FirstRunExperience';
 import { FeedbackPrompt } from './components/modals/FeedbackPrompt';
 import { UpdateNotification } from './components/modals/UpdateNotification';
-import { AdminLogin } from './pages/AdminLogin';
-import AdminDashboardPage from './pages/AdminDashboardPage';
 import { hasValidSession } from './lib/admin';
 import { initAnalytics, trackPageView } from './lib/analytics';
 import { getAnalyticsEnabled, getAnalyticsConsent } from './lib/storage';
 import { MaintenancePage } from './components/MaintenancePage';
 import { ErrorPage } from './components/ErrorPage';
+
+// Admin routes are visitor-rare – code-split to keep public bundle small (Task 9)
+const AdminLogin = lazy(() => import('./pages/AdminLogin').then(m => ({ default: m.AdminLogin })));
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.hash);
@@ -88,14 +90,22 @@ export default function App() {
         window.location.hash = '#/admin/overview';
         return null;
       }
-      return <AdminLogin />;
+      return (
+        <Suspense fallback={<div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center text-gray-500">Loading…</div>}>
+          <AdminLogin />
+        </Suspense>
+      );
     }
     if (isDashboardRoute) {
       if (!isAuthenticated) {
         window.location.hash = '#/admin';
         return null;
       }
-      return <AdminDashboardPage />;
+      return (
+        <Suspense fallback={<div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center text-gray-500">Loading admin…</div>}>
+          <AdminDashboardPage />
+        </Suspense>
+      );
     }
   }
 
