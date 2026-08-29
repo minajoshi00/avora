@@ -9,8 +9,8 @@ interface AvoraLogoProps {
 export function AvoraLogo({ className, width = 120, height = 32 }: AvoraLogoProps) {
   return (
     <img
-      src="/nova-logo.svg.png"
-      alt="AVORA"
+      src="/logo.svg"
+      alt="AVORA AI — Your Intelligent AI Companion for Windows"
       className={cn('select-none', className)}
       width={width}
       height={height}

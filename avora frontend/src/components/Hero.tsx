@@ -53,18 +53,18 @@ export function Hero() {
             transition={{ duration: 0.7, delay: 0.45, ease: [0.16, 1, 0.3, 1] }}
             className="text-[18px] sm:text-2xl md:text-[28px] text-gray-300 font-light tracking-[-0.02em] leading-tight"
           >
-            An intelligence that grows with you.
+            Your intelligent companion for Windows.
           </motion.p>
         </div>
 
-        {/* Single concise supporting line — breathing room */}
+        {/* Positioning — what AVORA actually does (SEO + conversion, human-first) */}
         <motion.p
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.58, ease: [0.16, 1, 0.3, 1] }}
           className="mx-auto mt-7 sm:mt-8 max-w-[560px] text-[15px] sm:text-[16px] leading-relaxed text-gray-400 text-balance"
         >
-          Not another chatbot. A companion that understands your context, remembers what matters, and evolves with you.
+          Chat with it. Ask it. Tell it what to do. AVORA understands natural language and performs real actions — open apps and websites, manage folders, control Windows settings, and handle multi-step tasks.
         </motion.p>
 
         {/* CTAs — generous space */}
