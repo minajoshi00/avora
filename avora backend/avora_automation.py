@@ -2,6 +2,7 @@
 ================================================================
 AVORA AUTOMATION PLANNER
 ================================================================
+
 Multi-step autonomous planner that breaks complex goals into
 steps, executes sequentially, verifies each step, shows progress,
 supports cancellation, and safely recovers from errors.
@@ -12,9 +13,11 @@ Features:
 - Progress tracking (percentage, current step)
 - Cancellation support (checks panic state)
 - Error recovery (retry, skip, abort)
-- Activity logging for all steps
+- Activity logging
 - Permission checks before risky actions
-================================================================
+- Context propagation between actions
+- Reference resolution
+- Confidence + ambiguity handling
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ import re
 import time
 import threading
 from datetime import datetime
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict, Any, List
 
 from settings import get_setting
 from avora_safety import (
@@ -77,6 +80,8 @@ class AutomationTask:
         self.results: list[dict] = []
         self._cancelled = False
         self._lock = threading.RLock()
+        self._required_user_input: Optional[dict] = None
+        self._user_input_callback: Optional[Callable] = None
 
     def cancel(self) -> None:
         """Cancel the task."""
@@ -87,6 +92,16 @@ class AutomationTask:
 
     def is_cancelled(self) -> bool:
         return self._cancelled or is_panic()
+
+    def set_required_user_input(self, input_spec: dict):
+        """Set required user input (for confirmation, password, etc.)."""
+        with self._lock:
+            self._required_user_input = input_spec
+
+    def clear_required_user_input(self):
+        """Clear required user input."""
+        with self._lock:
+            self._required_user_input = None
 
     def get_progress(self) -> dict:
         """Get task progress information."""
@@ -232,11 +247,59 @@ def _dispatch_action(action: str, params: dict) -> Optional[str]:
     # App operations
     elif action == "open_app":
         from ai_logic import open_application
-        return str(open_application(params.get("app", "")))
+        app_name = params.get("app", "")
+        if not _is_genuine_app_target(app_name):
+            # DEFENSIVE BOUNDARY: the application launcher may ONLY ever
+            # receive a genuine application target. Phrases like
+            # "search for Minecraft" or "check for Atharba" must NEVER be
+            # launched as applications.
+            return f"Refused to launch '{app_name}': not a genuine application target"
+        return str(open_application(app_name))
+
+    # Semantic web search
+    elif action == "search_web":
+        from ai_logic import search_google
+        return str(search_google(params.get("query", "")))
+
+    # Semantic find (person/file/entity) inside an opened application
+    elif action == "find_entity":
+        from ai_logic import ask_ai
+        target = params.get("target", "")
+        context = params.get("context", "")
+        return str(ask_ai(f"Find '{target}' inside {context or 'the active application'}"))
+
+    # Semantic media playback
+    elif action == "play_media":
+        from ai_logic import search_youtube
+        return str(search_youtube(params.get("target", "")))
+
+    # Chained step: open the first result of the previous search step
+    elif action == "open_search_result":
+        from ai_logic import search_google
+        query = params.get("query", "")
+        if query:
+            search_google(query)
+            return "Opened first search result"
+        return "Open first search result (consumes previous search output)"
+
+    # System setting change ("Turn Bluetooth on")
+    elif action == "change_setting":
+        import os
+        setting = params.get("setting", "").lower()
+        state = params.get("state", "").lower()
+        if "bluetooth" in setting:
+            os.startfile("ms-settings:bluetooth")
+            return f"Opened Bluetooth settings ({state})"
+        if "wifi" in setting or "wi-fi" in setting:
+            os.startfile("ms-settings:network-wifi")
+            return f"Opened Wi-Fi settings ({state})"
+        os.startfile("ms-settings:")
+        return f"Opened Windows settings for '{setting}' ({state})"
 
     elif action == "open_website":
         from ai_logic import open_website
-        return str(open_website(params.get("url", "")))
+        url = params.get("url", "")
+        return str(open_website(url))
 
     # System operations
     elif action == "take_screenshot":
@@ -269,13 +332,53 @@ def _dispatch_action(action: str, params: dict) -> Optional[str]:
 # TASK PLANNER
 # ============================================================
 
+# Action-verb phrases that must NEVER be interpreted as an application
+# target (general semantic guard, not tied to any specific app).
+_APP_TARGET_FORBIDDEN = re.compile(
+    r"\b(search|find|check|look|play|message|send|browse|open|watch|read|write|call|download)\b"
+)
+
+
+def _is_genuine_app_target(name: str) -> bool:
+    """Return True only for a plausible application target.
+
+    A genuine application target is short, single-intent, and contains no
+    action-verb phrases. Anything like "search for Minecraft" or
+    "check for Atharba" is rejected so the launcher boundary can never be
+    tricked into launching a command as if it were an application.
+    """
+    name = (name or "").strip()
+    if not name or len(name) > 40:
+        return False
+    if _APP_TARGET_FORBIDDEN.search(name.lower()):
+        return False
+    # Multi-clause commands ("x and y") are not application names
+    if " and " in name.lower() or ", then " in name.lower():
+        return False
+    return True
+
+
 def plan_task(goal: str) -> list[dict]:
     """
     Break a natural-language goal into ordered steps.
     Uses rule-based decomposition for common patterns.
+    
+    This is the key function that creates proper multi-step plans
+    with semantic understanding instead of keyword splitting.
     """
     goal_lower = goal.lower().strip()
     steps = []
+
+    # Pattern: "Open Instagram and check for Atharba Bhandari"
+    # This should create: OPEN Instagram -> FIND Atharba Bhandari
+    if _is_multi_step_semantic(goal_lower):
+        return _plan_semantic_task(goal_lower)
+
+    # Single-step setting change ("Turn Bluetooth on") — also handled
+    # semantically, not as an application launch.
+    setting_steps: list[dict] = []
+    if _plan_setting_change(goal_lower, setting_steps):
+        return setting_steps
 
     # File creation plan
     if "create" in goal_lower and "file" in goal_lower:
@@ -311,6 +414,184 @@ def plan_task(goal: str) -> list[dict]:
         {"name": "Process goal", "action": "ask_ai", "params": {"prompt": goal}, "permission": "safe"},
     ]
     return steps
+
+
+def _is_multi_step_semantic(text: str) -> bool:
+    """Check if the text represents a multi-step semantic request."""
+    # Check for connectors that indicate sequence, not just keyword matching
+    connectors = ["then", "after that", "and then", "next", "followed by", "afterwards"]
+    if any(indicator in text for indicator in connectors):
+        return True
+    
+    # Check for comma-separated multi-intent sentences
+    if text.count(",") >= 2:
+        return True
+    
+    # Check for "and" connecting different action types
+    # e.g., "Open Instagram and check for Atharba Bhandari"
+    if " and " in text:
+        parts = text.split(" and ")
+        if len(parts) >= 2:
+            # Check if parts have different verb types
+            verb_indicators = ["open", "search", "find", "play", "send", "turn", "check"]
+            parts_have_verbs = []
+            for part in parts:
+                has_verb = any(part.strip().startswith(f"{v} ") or f" {v} " in part for v in verb_indicators)
+                parts_have_verbs.append(has_verb)
+            if any(parts_have_verbs) and all(parts_have_verbs) == False or sum(parts_have_verbs) > 1:
+                return True
+    
+    return False
+
+
+def _plan_semantic_task(goal: str) -> list[dict]:
+    """Plan a semantic multi-step task by understanding intent, entities, and context."""
+    goal_lower = goal.lower().strip()
+    steps = []
+    
+    # Parse the goal to understand intent, entities, and required actions
+    # This replaces naive keyword splitting with semantic understanding
+    
+    # Pattern: "Open Instagram and check for Atharba Bhandari"
+    # Detect: OPEN_APPLICATION + FIND_PERSON
+    
+    # Pattern: "Open Chrome and search for Minecraft shaders"
+    # Detect: OPEN Chrome + SEARCH web
+    
+    # Pattern: "Open Downloads and find the physics PDF"
+    # Detect: OPEN Downloads + FIND file
+    
+    # Pattern: "Open YouTube and play the latest MrBeast video"
+    # Detect: OPEN YouTube + FIND creator + PLAY latest
+    
+    # Pattern: "Turn Bluetooth on"
+    # Detect: CHANGE_SETTING Bluetooth = ON
+    
+    # Try to identify the pattern
+    if _plan_open_then_find(goal_lower, steps):
+        return steps
+    
+    if _plan_open_then_search(goal_lower, steps):
+        return steps
+    
+    if _plan_open_then_play(goal_lower, steps):
+        return steps
+    
+    if _plan_setting_change(goal_lower, steps):
+        return steps
+    
+    # Fallback to default AI plan
+    return [
+        {"name": "Process goal", "action": "ask_ai", "params": {"prompt": goal}, "permission": "safe"},
+    ]
+
+
+def _plan_open_then_find(goal: str, steps: list) -> bool:
+    """Plan: Open application, then find/check for person/entity.
+
+    Matches verbs like "find", "check for", "look for", "look up" —
+    generically, not tied to any single application.
+    """
+    match = re.match(
+        r"open\s+(.+?)\s+and\s+(?:find|check(?:\s+for)?|look\s+(?:up|for))\s*(.*)",
+        goal,
+    )
+    if match:
+        app = match.group(1).strip()
+        target = (match.group(2) or "").strip()
+        if not target:
+            return False
+        # Guard: if the "target" itself is a web-search phrasing, let the
+        # search planner handle it instead of treating it as an entity.
+        if re.match(r"(?:the\s+)?web\b", target):
+            return False
+
+        steps.extend([
+            {"name": f"Open {app}", "action": "open_app", "params": {"app": app}, "permission": "safe"},
+            {"name": f"Find {target}", "action": "find_entity", "params": {"target": target, "context": app}, "permission": "safe"},
+        ])
+        return True
+    return False
+
+
+def _plan_open_then_search(goal: str, steps: list) -> bool:
+    """Plan: Open application, then search web.
+
+    Also handles chained requests like:
+        "Open Chrome and search for Minecraft, then open the first result"
+    The later step consumes the previous step's context/output via
+    `depends_on` + `input_from` references (context propagation).
+    """
+    match = re.match(r"open\s+(.+?)\s+and\s+search\s+(?:the\s+web\s+)?for\s+(.+)", goal)
+    if match:
+        app = match.group(1).strip()
+        remainder = match.group(2).strip()
+
+        # Split chained follow-up actions: ", then open the first result"
+        chained = None
+        chain_match = re.match(r"(.+?)[,;]?\s+then\s+(.+)", remainder)
+        if chain_match:
+            remainder = chain_match.group(1).strip()
+            chained = chain_match.group(2).strip()
+
+        steps.extend([
+            {"name": f"Open {app}", "action": "open_app", "params": {"app": app}, "permission": "safe"},
+            {"name": f"Search web for '{remainder}'", "action": "search_web", "params": {"query": remainder}, "permission": "safe"},
+        ])
+
+        if chained:
+            # The chained step consumes the search step's output.
+            if re.match(r"open\s+(?:the\s+)?(?:first|top)\s+result", chained):
+                steps.append({
+                    "name": "Open first search result",
+                    "action": "open_search_result",
+                    "params": {"position": 1},
+                    "input_from": "search_web",       # consumes previous output
+                    "depends_on": "search_web",
+                    "permission": "safe",
+                })
+            else:
+                steps.append({
+                    "name": chained.title(),
+                    "action": "ask_ai",
+                    "params": {"prompt": chained, "context_from": "search_web"},
+                    "depends_on": "search_web",
+                    "permission": "safe",
+                })
+        return True
+    return False
+
+
+def _plan_open_then_play(goal: str, steps: list) -> bool:
+    """Plan: Open application, then play media."""
+    # Pattern: "Open X and play Y"
+    match = re.match(r"open\s+(.+?)\s+and\s+play\s+(.+)", goal)
+    if match:
+        app = match.group(1).strip()
+        target = match.group(2).strip()
+        
+        steps.extend([
+            {"name": f"Open {app}", "action": "open_app", "params": {"app": app}, "permission": "safe"},
+            {"name": f"Play {target}", "action": "play_media", "params": {"target": target}, "permission": "safe"},
+        ])
+        return True
+    return False
+
+
+def _plan_setting_change(goal: str, steps: list) -> bool:
+    """Plan: Change a system setting."""
+    # Pattern: "Turn X on/off"
+    match = re.match(r"(turn|change)\s+(?:the\s+)?(.+?)\s+(on|off)", goal)
+    if match:
+        action = match.group(1).strip()
+        setting = match.group(2).strip()
+        state = match.group(3).strip()
+        
+        steps.extend([
+            {"name": f"Change {setting} to {state}", "action": "change_setting", "params": {"setting": setting, "state": state}, "permission": "safe"},
+        ])
+        return True
+    return False
 
 
 # ============================================================

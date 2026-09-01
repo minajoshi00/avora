@@ -458,6 +458,30 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         ],
     },
 
+    # =========================================================
+    # AGENT PERMISSIONS
+    # =========================================================
+
+    "agent_permissions": {
+        "browser.open": "ask_every_time",
+
+        "browser.navigate": "ask_every_time",
+
+        "browser.search": "ask_every_time",
+
+        "application.open": "ask_every_time",
+
+        "filesystem.read": "ask_every_time",
+
+        "filesystem.write": "ask_every_time",
+
+        "filesystem.delete": "always_confirm",
+
+        "windows.settings": "always_confirm",
+
+        "power.shutdown": "always_confirm",
+    },
+
 
     # =========================================================
     # CHARACTER CUSTOMIZATION

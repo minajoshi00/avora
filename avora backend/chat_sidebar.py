@@ -125,6 +125,18 @@ def truncate_title(title: str, max_len: int = 40) -> str:
     return title[:max_len].rstrip() + "..."
 
 
+def _plain(text: str) -> str:
+    """Strip raw Markdown syntax so sidebar previews/titles never
+    show '###', '**', backticks etc. (UI-only; content unchanged)."""
+    t = str(text or "")
+    t = re.sub(r"```[a-zA-Z]*\n?|`", " ", t)      # fenced/inline code
+    t = re.sub(r"^#{1,6}\s*", "", t, flags=re.MULTILINE)  # headings
+    t = re.sub(r"\*\*?__?|__", "", t)             # bold/italic markers
+    t = re.sub(r"^\s*[-*+]\s+", "• ", t, flags=re.MULTILINE)  # bullets
+    t = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", t)  # links -> label
+    return " ".join(t.split())
+
+
 def generate_title_from_messages(messages: list[dict]) -> str:
     """Derive a short readable topic from the first meaningful user message."""
 
@@ -142,21 +154,27 @@ def generate_title_from_messages(messages: list[dict]) -> str:
 
     text = " ".join((first_user_text or "").split()).strip()
 
+    if not text:
+        return "New Conversation"
+
     # Strip common filler/greeting prefixes so topics stay meaningful.
-    # Applied repeatedly so stacked phrases ("hey can you help me") reduce
-    # down to the actual topic.
-    for _ in range(3):
-        cleaned = re.sub(
-            r"^(?:hey|hi|hello|yo|hii+|heyy+|please|pls|can you|could you"
-            r"|i want you to|i need you to|i need help with|i want help with"
-            r"|help me with|help me)\b[\s,:-]*",
-            "",
-            topic if _ else text,
-            flags=re.IGNORECASE,
-        ).strip()
-        if not cleaned:
-            break
-        topic = cleaned
+    cleaned = re.sub(
+        r"^(?:hey|hi|hello|yo|hii+|heyy+|please|pls|can you|could you"
+        r"|i want you to|i need you to|i need help with|i want help with"
+        r"|help me with|help me)\b[\s,:-]*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    # If nothing remains after stripping, use original text trimmed
+    if not cleaned:
+        words = text.split()
+        if len(words) <= 6:
+            return " ".join(words).capitalize()
+        return " ".join(words[:6]).capitalize()
+
+    topic = cleaned
 
     # Prefer ending at the first sentence/line for multi-part prompts.
     for sep in ["?", ".", "\n"]:
@@ -167,7 +185,16 @@ def generate_title_from_messages(messages: list[dict]) -> str:
 
     topic = topic.strip().rstrip(",;:-")
 
-    return truncate_title(topic if topic else text, max_len=32)
+    # Extract key words: keep 2-6 words max, focus on main intent/topic
+    words = topic.split()
+    if len(words) > 6:
+        topic = " ".join(words[:6])
+    elif len(words) < 2 and text:
+        # If only one word remains, use first words from original text
+        orig_words = text.split()
+        topic = " ".join(orig_words[:6])
+
+    return topic.capitalize()
 
 
 class ChatListTile(QWidget):
@@ -275,15 +302,22 @@ class ChatListTile(QWidget):
     def _update_display(self):
         title = self.chat.get("title", "New Conversation")
         messages = self.chat.get("messages", [])
-        updated_at = self.chat.get("updated_at", "")
 
-        self.title_label.setText(truncate_title(title))
+        # Auto-generate title if still using default "New Conversation"
+        if title == "New Conversation" and messages:
+            generated = generate_title_from_messages(messages)
+            if generated and generated != "New Conversation":
+                title = generated
+                self.chat["title"] = generated
+
+        self.title_label.setText(truncate_title(_plain(title)))
 
         preview_text = ""
         if messages:
             last_msg = messages[-1]
             role = last_msg.get("role", "")
             content = last_msg.get("content", "")
+            content = _plain(content)
             if role == "user":
                 preview_text = f"You: {content[:60]}"
             else:
@@ -294,6 +328,7 @@ class ChatListTile(QWidget):
         self.preview_label.setText(preview_text)
 
         try:
+            updated_at = self.chat.get("updated_at", "")
             if updated_at:
                 if updated_at.endswith("Z"):
                     updated_at = updated_at[:-1]

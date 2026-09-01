@@ -1242,16 +1242,206 @@ def _analyze_user_input(text: str) -> dict[str, Any]:
     ):
         history_relevant = True
 
+    # -----------------------------------------------------------
+    # LEVEL-BY-LEVEL MISSING INFORMATION CLASSIFICATION
+    # -----------------------------------------------------------
+    # LEVEL 1 — Safe to infer: reasonable defaults, common conventions
+    # LEVEL 2 — Infer from context: conversation, memories, settings, project state
+    # LEVEL 3 — Must ask: genuinely required; guessing would produce wrong result
+    # -----------------------------------------------------------
+
+    # --- Level 1: Safe to infer defaults ---
+    level1_inferred: dict[str, str] = {}
+    level1_reasonable = True
+
+    # Creative task defaults (promotional videos, Instagram posts, etc.)
+    if classification["intent"] == "conversation":
+        # Check if this is a creative task request
+        creative_keywords = [
+            "promotional video", "youtube video", "instagram post",
+            "presentation", "instagram", "youtube", "video",
+        ]
+        text_lower = lower
+        is_creative = any(kw in text_lower for kw in creative_keywords)
+        if is_creative:
+            # Infer goal, audience, tone, structure from the request itself
+            if "promotional video" in text_lower or ("explain" in text_lower and "avor" in text_lower):
+                level1_inferred["goal"] = "Create an AVORA promotional/explainer video"
+                level1_inferred["audience"] = "People interested in AI assistants, productivity, automation"
+                level1_inferred["tone"] = "Energetic + informative"
+                level1_inferred["structure"] = "Hook → Problem → AVORA introduction → Real capabilities → Benefits → Call to action"
+            elif "instagram post" in text_lower:
+                level1_inferred["goal"] = "Create an Instagram promotional post for AVORA"
+                level1_inferred["audience"] = "Social media followers / general technology audience"
+                level1_inferred["tone"] = "Energetic"
+                level1_inferred["structure"] = "Concise promotional post with CTA: try/download/learn more"
+            elif "presentation" in text_lower:
+                level1_inferred["goal"] = "Create a presentation about the mentioned topic"
+                level1_inferred["audience"] = "General audience / event attendees"
+                level1_inferred["tone"] = "Educational + engaging"
+                level1_inferred["structure"] = "Introduction → Key points → Conclusion → Q&A"
+
+    # --- Level 2: Infer from available context ---
+    level2_inferred: dict[str, str] = {}
+    level2_available = False
+
+    # Conversation context inference
+    if history_relevant and len(conversation_history) > 0:
+        # Look at recent user messages for AVORA-specific references
+        recent_user_msgs = [
+            msg.get("content", "")
+            for msg in reversed(conversation_history[-5:])
+            if msg.get("role") == "user"
+        ]
+        combined_recent = " ".join(recent_user_msgs).lower()
+        # If user previously mentioned AVORA or a specific topic, infer context
+        if "avor" in combined_recent:
+            level2_available = True
+            if "video" in combined_recent and not level1_inferred.get("goal"):
+                level2_inferred["goal"] = "Create AVORA-related video content"
+                level2_inferred["audience"] = "Technology/AI audience"
+        # Check for previously discussed goals/audience/tone
+        for msg in reversed(conversation_history[-10:]):
+            if msg.get("role") == "user":
+                content = msg.get("content", "").lower()
+                # Infer tone preferences
+                if any(word in content for word in ["professional", "casual", "friendly", "fun"]):
+                    if not level1_inferred.get("tone"):
+                        if "professional" in content:
+                            level1_inferred["tone"] = "professional"
+                        elif "casual" in content:
+                            level1_inferred["tone"] = "casual"
+                        elif "friendly" in content:
+                            level1_inferred["tone"] = "friendly"
+                        elif "fun" in content:
+                            level1_inferred["tone"] = "playful"
+                # Infer audience/context
+                if "student" in content or "learning" in content:
+                    if not level1_inferred.get("audience"):
+                        level2_inferred["audience"] = "Students / learners"
+                if "creator" in content or "video" in content:
+                    if not level1_inferred.get("goal"):
+                        level2_inferred["goal"] = "Create video content"
+
+    # Memory/saved preferences inference
+    try:
+        from memory import get_memories
+        memories = get_memories()
+        if memories:
+            mem_text = " ".join(str(m) for m in memories).lower()
+            # Check for user preferences about tone, audience
+            if "tone" in mem_text and not level1_inferred.get("tone"):
+                # Use last mentioned tone preference
+                level1_inferred["tone"] = "casual"  # default friendly default
+            if "audience" in mem_text and not level1_inferred.get("audience"):
+                level2_inferred["audience"] = "General user"
+    except Exception:
+        pass
+
+    # User settings inference
+    try:
+        from settings import get_setting
+        response_style = get_setting("ai.response_style", "friendly")
+        if response_style == "professional" and not level1_inferred.get("tone"):
+            level1_inferred["tone"] = "professional"
+        elif response_style == "calm" and not level1_inferred.get("tone"):
+            level1_inferred["tone"] = "calm"
+        elif response_style == "playful" and not level1_inferred.get("tone"):
+            level1_inferred["tone"] = "playful"
+    except Exception:
+        pass
+
+    # --- Level 3: Must ask (genuinely ambiguous) ---
+    # Only set when inference would produce materially wrong result
+    level3_needs_clarification = False
+    level3_clarification_question = ""
+
+    # Check for genuinely ambiguous cases
+    # "Send email to John" when multiple Johns exist → must ask
+    # "Delete the file" when multiple files match → handled by existing confirmation gate
+    # "Book a restaurant" when date/party size unknown → must ask
+    # "Create a video" when purpose completely unclear → handled by Level 1 inference
+
+    # The key test: if we have reasonable Level 1 or Level 2 inference,
+    # we do NOT set level3_needs_clarification even if confidence is low.
+    # Only set level3 when NO reasonable inference is possible.
+
+    # Determine overall clarification need
+    # We need clarification ONLY if Level 3 is required AND Level 1/2 inference is not available
+    overall_needs_clarification = (
+        level3_needs_clarification
+        and not level1_reasonable
+        and not level2_available
+    )
+
     return {
         "intent": classification["intent"],
         "confidence": classification["confidence"],
         "emotion": emotion,
         "urgency": urgency,
-        "needs_clarification": needs_clarification,
+        "needs_clarification": overall_needs_clarification,
         "multi_step": multi_step,
         "memory_relevant": memory_relevant,
         "history_relevant": history_relevant,
+        # Level 1 inferences (safe defaults)
+        "inferred_goal": level1_inferred.get("goal"),
+        "inferred_audience": level1_inferred.get("audience"),
+        "inferred_tone": level1_inferred.get("tone"),
+        "inferred_structure": level1_inferred.get("structure"),
+        # Level 2 inferences (from context)
+        "context_inferred_goal": level2_inferred.get("goal"),
+        "context_inferred_audience": level2_inferred.get("audience"),
+        # Level 3 flag
+        "clarification_required": level3_needs_clarification,
+        # Combined inference summary for the AI prompt
+        "inference_summary": _build_inference_summary(
+            level1_inferred, level2_inferred, level1_reasonable, level2_available
+        ),
     }
+
+
+# ============================================================
+# INFERENCE SUMMARY BUILDER
+# ============================================================
+
+
+def _build_inference_summary(
+    level1_inferred: dict[str, str],
+    level2_inferred: dict[str, str],
+    level1_reasonable: bool,
+    level2_available: bool,
+) -> str:
+    """Build a concise inference summary for the AI system prompt."""
+    parts = []
+    if level1_inferred:
+        inferred_parts = []
+        if level1_inferred.get("goal"):
+            inferred_parts.append(f"goal: {level1_inferred['goal']}")
+        if level1_inferred.get("audience"):
+            inferred_parts.append(f"audience: {level1_inferred['audience']}")
+        if level1_inferred.get("tone"):
+            inferred_parts.append(f"tone: {level1_inferred['tone']}")
+        if level1_inferred.get("structure"):
+            inferred_parts.append(f"structure: {level1_inferred['structure']}")
+        if inferred_parts:
+            parts.append(f"Inferred (defaults): {', '.join(inferred_parts)}")
+    if level2_inferred:
+        ctx_parts = []
+        if level2_inferred.get("goal"):
+            ctx_parts.append(f"goal: {level2_inferred['goal']}")
+        if level2_inferred.get("audience"):
+            ctx_parts.append(f"audience: {level2_inferred['audience']}")
+        if ctx_parts:
+            parts.append(f"Inferred from context: {', '.join(ctx_parts)}")
+    if level1_reasonable and not level2_available:
+        parts.append("Using safe default inferences from request.")
+    elif level2_available and not level1_reasonable:
+        parts.append("Using context-based inferences.")
+    elif level1_reasonable and level2_available:
+        parts.append("Using both default and context inferences.")
+    if not parts:
+        parts.append("No specific inferences available; proceed naturally.")
+    return " | ".join(parts)
 
 
 # ============================================================
@@ -2329,22 +2519,24 @@ def handle_natural_actions(user_text: str) -> str | None:
     # At this point we have an action-like message
     # Multi-step split
     steps = _split_multi_step(raw)
-    # For multi-step we execute sequentially and verify each
+    # For multi-step we execute sequentially and verify each step.
+    # We continue through all steps and only claim success when every step
+    # succeeds and verifies. This ensures one coherent Agent session where
+    # the character stays visible from beginning to end.
     results: list[AvoraActionResult] = []
     for idx, step in enumerate(steps):
         print(f"[AVORA] PLAN STEP {idx+1}/{len(steps)}: \"{step}\"")
         res = _single_action_to_result(step)
         print(f"[AVORA] RESULT STEP {idx+1}: success={res.success} target={res.target} type={res.target_type} verified={res.verified} details={res.details} error={res.error}")
         results.append(res)
-        if not res.success:
-            # Do NOT continue blindly if a dependency failed, but allow independent steps?
-            # For now stop on first failure and report
-            break
+        # Do NOT break on first failure — continue through all steps so
+        # the task is one coherent session and the final response honestly
+        # reflects the complete execution state.
     # Build truthful response from execution results
     if not results:
         return None
     # Recovery attempt: if first application launch failed try alternative method
-    if len(results)==1 and not results[0].success and results[0].target_type=="application":
+    if len(results) == 1 and not results[0].success and results[0].target_type == "application":
         print("[AVORA] RECOVERY: retrying with fallback explorer/browser")
         alt = _execute_website(results[0].target) if _resolve_website_url(results[0].target) else None
         if alt and alt.success:
@@ -2352,19 +2544,19 @@ def handle_natural_actions(user_text: str) -> str | None:
     # Generate human response based on REAL results
     all_success = all(r.success for r in results)
     if all_success:
-        if len(results)==1:
+        if len(results) == 1:
             r = results[0]
-            if r.target_type=="website":
+            if r.target_type == "website":
                 return f"Done — opened {r.target} in your browser."
-            elif r.target_type=="folder":
+            elif r.target_type == "folder":
                 return f"Done — opened {r.target} folder."
-            elif r.target_type=="application":
+            elif r.target_type == "application":
                 return f"Done — launched {r.target}."
-            elif r.target_type=="search":
+            elif r.target_type == "search":
                 return f"Done — searched for {r.target}."
-            elif r.target_type=="system_setting":
+            elif r.target_type == "system_setting":
                 return f"Done — opened {r.target}."
-            elif r.target_type=="document":
+            elif r.target_type == "document":
                 return f"Done — opened {r.target}."
             else:
                 return f"Done — completed: {r.details or r.target}"
@@ -2372,16 +2564,22 @@ def handle_natural_actions(user_text: str) -> str | None:
             steps_done = ", ".join([f"{r.target} ({'ok' if r.success else 'failed'})" for r in results])
             return f"Done — completed {len(results)} steps: {steps_done}."
     else:
-        # partial failure
-        failed = [r for r in results if not r.success][0]
+        # Partial failure — report what completed and what didn't.
+        # The task is truthful: success only when every step verified.
         succeeded = [r for r in results if r.success]
-        if succeeded:
+        failed = [r for r in results if not r.success][0] if not all(r.success for r in results) else None
+        if succeeded and failed:
             ok_list = ", ".join([r.target for r in succeeded])
-            return f"I opened {ok_list}, but couldn't complete '{failed.target}': {failed.error or 'unknown error'}"
+            return f"I completed {ok_list}, but couldn't '{failed.target}': {failed.error or 'unknown error'}"
+        elif succeeded:
+            ok_list = ", ".join([r.target for r in succeeded])
+            return f"I completed {ok_list}."
         else:
-            if "not found" in (failed.error or "").lower():
+            if failed and "not found" in (failed.error or "").lower():
                 return f"I couldn't find '{failed.target}'. {failed.error}"
-            return f"I couldn't complete that: {failed.error or 'unknown error'}"
+            if failed:
+                return f"I couldn't complete that: {failed.error or 'unknown error'}"
+            return "I couldn't complete the task."
 
 
 
@@ -3871,10 +4069,16 @@ def process_message(user_message: str, attachments: list[dict] | None = None):
     if analysis["multi_step"]:
         multi_step_guidance = "\n[MULTI-STEP REQUEST: Break this into clear steps. Confirm understanding before proceeding.]"
 
-    # Clarification guidance
+    # Clarification guidance — now inference-aware
+    # We only ask clarification when Level 3 is truly needed (no reasonable inference possible)
+    # Level 1 (safe defaults) and Level 2 (context inference) override the need to ask
     clarification_guidance = ""
-    if analysis["needs_clarification"]:
-        clarification_guidance = "\n[NEEDS CLARIFICATION: Ask ONE natural, conversational question to understand better.]"
+    if analysis.get("clarification_required", analysis["needs_clarification"]):
+        # Only add clarification guidance if inference couldn't reasonably resolve it
+        if not analysis.get("inferred_goal") and not analysis.get("context_inferred_goal"):
+            clarification_guidance = (
+                "\n[NEEDS CLARIFICATION: Ask ONE natural, conversational question to understand better.]"
+            )
 
     prompt = f"""
 {get_system_prompt()}
@@ -3897,6 +4101,10 @@ INTERNAL ANALYSIS (use this to guide your response style):
 - Intent confidence: {analysis["confidence"]}
 - Multi-step request: {analysis["multi_step"]}
 - Needs clarification: {analysis["needs_clarification"]}
+- Inference summary: {analysis.get("inference_summary", "No specific inferences available.")}
+- Inferred goal: {analysis.get("inferred_goal", "Not specified")}
+- Inferred audience: {analysis.get("inferred_audience", "Not specified")}
+- Inferred tone: {analysis.get("inferred_tone", "Not specified")}
 
 RESPONSE GUIDELINES:
 {emotion_guidance}

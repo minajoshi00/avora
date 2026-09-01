@@ -17,12 +17,59 @@ _LT = "&" + "lt;"
 _GT = "&" + "gt;"
 
 
-def markdown_to_html(text: Any) -> str:
+def _mask_incomplete_markers(text: str) -> str:
+    """Hide trailing incomplete Markdown markers while streaming so the
+    user never sees raw '###', '**', or a dangling backtick/fence.
+
+    Only touches markers at the very END of the text (streaming edge);
+    complete markers earlier in the text are untouched.
+    """
+    # Fenced code block opened but not closed: drop the raw opening fence
+    # line (including the language tag) to avoid rendering raw ``` while
+    # the block streams in.
+    if text.count("```") % 2 == 1:
+        idx = text.rfind("```")
+        rest = text[idx + 3:]
+        nl = rest.find("\n")
+        text = text[:idx] + (rest[nl + 1:] if nl != -1 else "")
+        if not text.strip():
+            return ""
+    # Trailing bare heading marker(s) with no content yet.
+    text = re.sub(r"(?:^|\n)#{1,6}\s*$", "", text)
+    # Unbalanced bold/inline-code markers at the tail.
+    if text.count("**") % 2 == 1:
+        text = text[: text.rfind("**")]
+    for marker in ("__", "`"):
+        if text.count(marker) % 2 == 1:
+            text = text[: text.rfind(marker)]
+    # Single trailing '*' or '_' that is not a bullet/list item and not
+    # part of a closing '**'/'__' emphasis pair.
+    if text.endswith("*") and not text.endswith("**") and not re.search(
+        r"(?:^|\n)\*\s", text[-4:]
+    ):
+        text = text[:-1]
+    elif text.endswith("_") and not text.endswith("__") and not re.search(
+        r"(?:^|\n)_\s", text[-4:]
+    ):
+        text = text[:-1]
+    return text
+
+
+def markdown_to_html(text: Any, streaming: bool = False) -> str:
     """Convert Markdown text to styled HTML."""
     if not text:
         return ""
 
     html = str(text)
+
+    # Normalize line endings so CRLF streaming / model output does not
+    # collapse paragraph and list block structure.
+    html = html.replace("\r\n", "\n").replace("\r", "\n")
+
+    # While streaming, hide trailing incomplete markers (raw ### / ** / `)
+    # so the user never sees Markdown syntax mid-stream.
+    if streaming:
+        html = _mask_incomplete_markers(html)
 
     # Escape HTML entities first
     html = _escape_html(html)
@@ -42,10 +89,13 @@ def markdown_to_html(text: Any) -> str:
     html = _convert_italic(html)
     html = _convert_strikethrough(html)
     html = _convert_line_breaks(html)
-
+    # Strip LLM-generated inline citation markers (applied AFTER conversion so
+    # it hits text nodes inside <p>/<li> but leaves code/link/table blocks and
+    # legitimate bracketed content untouched).
+    html = _strip_citation_markers(html)
     return (
         '<div style="font-family: \'Segoe UI\', sans-serif; '
-        'line-height: 1.6; color: #F5F5F5; '
+        'font-size: 15px; line-height: 1.65; color: #F5F5F5; '
         'overflow-wrap: break-word; word-wrap: break-word; word-break: break-word;">'
         + html
         + "</div>"
@@ -66,6 +116,75 @@ def _unescape_html(text: str) -> str:
     text = text.replace(_LT, "<")
     text = text.replace(_AMP, "&")
     return text
+
+
+# -----------------------------------------------------------------
+# Inline citation / step-badge cleanup
+# -----------------------------------------------------------------
+# Some models append inline citation markers ("[1]", "[2]", ...) to their own
+# text. These are NOT part of the intended answer — they render as small
+# numeric badges inside normal sentences. This cleanup removes them at the
+# rendering boundary while preserving legitimate bracketed content:
+#   - non-numeric brackets            -> [release]
+#   - decimal / version brackets      -> [1.2]
+#   - 4-digit years                   -> [2026]
+#   - markers near reference language -> "reference [1]"
+# Code blocks, inline code, links and tables are protected from the cleanup so
+# code/link text that legitimately contains a bracket is never altered.
+# -----------------------------------------------------------------
+
+_CITE_TOKEN = re.compile(r"\[\s*(\d+)\s*\]")
+_CITE_PROTECT = re.compile(
+    r"(<pre\b.*?</pre>"
+    r"|<code\b.*?</code>"
+    r"|<a\b[^>]*>.*?</a>"
+    r"|<table\b.*?</table>)",
+    re.DOTALL,
+)
+_REFERENCE_WORDS = frozenset({
+    "reference", "references", "source", "sources", "figure", "fig",
+    "table", "item", "items", "section", "step", "version",
+    "footnote", "note",
+})
+
+
+def _strip_citation_markers(html: str) -> str:
+    """Remove inline citation markers from rendered HTML (documented above)."""
+    parts = _CITE_PROTECT.split(html)
+    rebuilt = []
+    for part in parts:
+        if part and _CITE_PROTECT.fullmatch(part):
+            rebuilt.append(part)  # protect code / link / table regions
+            continue
+        rebuilt.append(_strip_cites_in_text(part))
+    return "".join(rebuilt)
+
+
+def _strip_cites_in_text(text: str) -> str:
+    def replacer(match):
+        number = match.group(1)
+        # 4-digit tokens look like years, not citations -> keep [2026]
+        if len(number) == 4 and number.isdigit():
+            return match.group(0)
+        before = text[max(0, match.start() - 60):match.start()]
+        after = text[match.end():match.end() + 80]
+        if _tail_reference(before) or _head_reference(after):
+            return match.group(0)  # keep legitimate reference-like markers
+        return ""
+
+    return _CITE_TOKEN.sub(replacer, text)
+
+
+def _tail_reference(before: str) -> bool:
+    """True if a reference-noun appears just before the marker."""
+    words = re.findall(r"[A-Za-z]+", before.lower())
+    return any(w in _REFERENCE_WORDS for w in words[-3:])
+
+
+def _head_reference(after: str) -> bool:
+    """True if a reference-noun follows the marker within a few tokens."""
+    words = re.findall(r"[A-Za-z]+", after.lower())
+    return any(w in _REFERENCE_WORDS for w in words[:6])
 
 
 def _convert_code_blocks(text: str) -> str:
@@ -162,6 +281,9 @@ def _convert_unordered_lists(text: str) -> str:
 
     for line in lines:
         stripped = line.strip()
+        # Graceful streaming: drop dangling markers with no content yet
+        if re.match(r"^(\d+\.|[-*+])\s*$", stripped):
+            continue
         match = re.match(r"^[-*+]\s+(.+)$", stripped)
         if match:
             if not in_list:
@@ -185,22 +307,30 @@ def _convert_unordered_lists(text: str) -> str:
 
 
 def _convert_ordered_lists(text: str) -> str:
-    """Convert 1. 2. list items to <ol><li>."""
+    """Convert 1. 2. list items to <ol><li>.
+
+    Also breaks a numerically-crammed single line ("1. A 2. B 3. C") into
+    separate <li> items so compressed model output does not collapse into one
+    run-on item.
+    """
     lines = text.split("\n")
     result = []
     in_list = False
 
     for line in lines:
         stripped = line.strip()
-        match = re.match(r"^(\d+)\.\s+(.+)$", stripped)
-        if match:
+        # Graceful streaming: drop dangling markers with no content yet
+        if re.match(r"^(\d+\.|[-*+])\s*$", stripped):
+            continue
+        items = _split_numbered_line(stripped)
+        if items:
             if not in_list:
                 result.append(
                     "<ol style='margin: 6px 0; padding-left: 24px;'>"
                 )
                 in_list = True
-            content = match.group(2)
-            result.append("<li style='margin: 3px 0;'>" + content + "</li>")
+            for content in items:
+                result.append("<li style='margin: 3px 0;'>" + content + "</li>")
         else:
             if in_list:
                 result.append("</ol>")
@@ -213,22 +343,57 @@ def _convert_ordered_lists(text: str) -> str:
     return "\n".join(result)
 
 
-def _convert_blockquotes(text: str) -> str:
-    """Convert > blockquotes to styled blockquotes."""
-    pattern = r"^>\s+(.+)$"
+def _split_numbered_line(stripped: str):
+    """Split a line starting with a numbered marker into its list items.
 
-    def replacer(match):
-        content = match.group(1)
-        return (
-            '<blockquote style="border-left: 3px solid #6C63FF; '
-            "background: rgba(108, 99, 255, 0.08); "
+    Returns a list of item contents, or None if the line is not a numbered
+    list line. Handles both the normal one-marker-per-line case and the
+    crammed single-line case ("1. A 2. B 3. C").
+    """
+    match = re.match(r"^(\d+)\.\s+(.+)$", stripped)
+    if not match:
+        return None
+    rest = match.group(2)
+    # Split consecutive markers on the same line:  "A 2. B 3. C" -> ["A","B","C"]
+    pieces = re.split(r"\s+\d+\.\s+", rest)
+    items = [piece.strip() for piece in pieces if piece.strip()]
+    return items if items else None
+
+
+def _convert_blockquotes(text: str) -> str:
+    """Convert > blockquotes to styled blockquotes.
+
+    NOTE: this runs AFTER HTML escaping, so '>' is already '&gt;'.
+    The old pattern '^>\\s+' could never match — quotes rendered as raw
+    '&gt;' text. Consecutive quote lines are grouped into one block.
+    """
+    lines = text.split("\n")
+    result = []
+    quote_buf = []
+
+    def flush_quote():
+        if not quote_buf:
+            return
+        content = "<br>".join(quote_buf)
+        result.append(
+            '<blockquote style="border-left: 3px solid #00CC6A; '
+            "background: rgba(0, 255, 136, 0.06); "
             'padding: 8px 12px; margin: 8px 0; '
-            'border-radius: 4px; color: #C0C0D0;">'
+            'border-radius: 4px; color: #C8D8CC;">'
             + content
             + "</blockquote>"
         )
+        quote_buf.clear()
 
-    return re.sub(pattern, replacer, text, flags=re.MULTILINE)
+    for line in lines:
+        match = re.match(r"^&gt;\s?(.*)$", line.strip())
+        if match:
+            quote_buf.append(match.group(1))
+        else:
+            flush_quote()
+            result.append(line)
+    flush_quote()
+    return "\n".join(result)
 
 
 def _convert_tables(text: str) -> str:
@@ -347,26 +512,48 @@ def _convert_horizontal_rules(text: str) -> str:
 
 
 def _convert_line_breaks(text: str) -> str:
-    """Convert double newlines to paragraph breaks."""
-    # Protect pre and code blocks from line break conversion
-    def _protect_pre(match):
-        return match.group(0).replace("\n", "\x00")
+    """Convert newlines to paragraph/line breaks WITHOUT corrupting block HTML.
 
-    protected = re.sub(r"<pre.*?</pre>", _protect_pre, text, flags=re.DOTALL)
-
-    # Double newlines = paragraph break
-    protected = protected.replace("\n\n", "</p><p style='margin: 8px 0;'>")
-    # Single newlines = line break
-    protected = protected.replace("\n", "<br>")
-
-    # Restore protected blocks
-    protected = protected.replace("\x00", "\n")
-
-    # Wrap in paragraph if not already wrapped
-    if not protected.startswith("<"):
-        protected = "<p style='margin: 8px 0;'>" + protected + "</p>"
-    # Remove empty paragraphs
-    protected = protected.replace(
-        "<p style='margin: 8px 0;'></p>", ""
+    Previous implementation only protected <pre>, which injected stray </p>
+    fragments and <br> tags inside <h1-6>, <ol>/<ul>, <table> and
+    <blockquote> blocks — producing malformed HTML that Qt's rich-text
+    engine rendered as a wall of text. Block-level elements are now left
+    untouched; only plain text segments get paragraph conversion.
+    """
+    block_pattern = re.compile(
+        r"(<pre.*?</pre>"
+        r"|<div style=\"overflow-x[^\"]*\"[^>]*>.*?</div>"
+        r"|<table.*?</table>"
+        r"|<ol.*?</ol>"
+        r"|<ul.*?</ul>"
+        r"|<blockquote.*?</blockquote>"
+        r"|<h[1-6].*?</h[1-6]>"
+        r"|<hr[^>]*/?>)",
+        re.DOTALL,
     )
-    return protected
+
+    def _convert_segment(segment: str) -> str:
+        segment = segment.strip("\n")
+        if not segment.strip():
+            return ""
+        paragraphs = segment.split("\n\n")
+        parts = []
+        for para in paragraphs:
+            para = para.strip("\n")
+            if not para.strip():
+                continue
+            # Soft line breaks inside a paragraph
+            para = para.replace("\n", "<br>")
+            parts.append("<p style='margin: 8px 0;'>" + para + "</p>")
+        return "".join(parts)
+
+    parts = block_pattern.split(text)
+    out = []
+    for part in parts:
+        if not part:
+            continue
+        if block_pattern.fullmatch(part):
+            out.append(part)  # leave block-level HTML intact
+        else:
+            out.append(_convert_segment(part))
+    return "".join(out)

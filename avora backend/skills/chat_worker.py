@@ -26,6 +26,34 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ai_logic import process_message, get_conversation_history, conversation_history
 
 
+def _simulate_stream_chunks(text: str, min_len: int = 80) -> list:
+    """Split text into progressive display chunks WITHOUT losing whitespace.
+
+    Preserves every newline / double-newline so paragraph and list block
+    structure survives to the Markdown renderer. The concatenation of the
+    returned chunks is byte-for-byte identical to ``text``.
+    """
+    import re
+    # Split after sentence punctuation but CAPTURE the trailing whitespace
+    # (including "\n"/"\n\n") so paragraph/list boundaries are not destroyed.
+    parts = re.split(r"(?<=[.!?])(\s+)", str(text), flags=re.DOTALL)
+    chunks = []
+    chunk = ""
+    i = 0
+    n = len(parts)
+    while i < n:
+        sentence = parts[i]
+        ws = parts[i + 1] if (i + 1 < n) else ""
+        chunk += sentence + ws
+        i += 2
+        if len(chunk) >= min_len or sentence.rstrip().endswith((".", "!", "?")):
+            chunks.append(chunk)
+            chunk = ""
+    if chunk.strip():
+        chunks.append(chunk)
+    return chunks
+
+
 class StreamingWorker(QThread):
     """
     Worker thread that generates AI responses with streaming-like behavior.
@@ -107,34 +135,20 @@ class StreamingWorker(QThread):
                 self.stream_failed.emit(error_msg)
 
     def _simulate_streaming(self, text: str):
-        """Break text into chunks and emit them progressively."""
+        """Break text into chunks and emit them progressively.
+
+        Uses _simulate_stream_chunks() so newlines / double-newlines are
+        preserved — the AI's paragraph and list structure reaches the Markdown
+        renderer intact (fixes the wall-of-text bug).
+        """
         if not text:
             return
 
-        # For short responses, emit in sentence chunks
-        # For longer responses, emit in paragraph chunks
-        text_str = str(text)
-
-        # Split by sentences for natural progressive display
-        import re
-        sentences = re.split(r'(?<=[.!?])\s+', text_str)
-
-        chunk = ""
-        for sentence in sentences:
+        for chunk in _simulate_stream_chunks(str(text)):
             if self.is_cancelled():
                 return
-
-            chunk += sentence + " "
-            
-            # Emit paragraph-sized chunks
-            if len(chunk) >= 80 or sentence.endswith((".", "!", "?")):
-                self.chunk_ready.emit(chunk)
-                chunk = ""
-                self.msleep(15)  # Small delay for progressive feel
-
-        # Emit remaining text
-        if chunk.strip():
             self.chunk_ready.emit(chunk)
+            self.msleep(15)  # Small delay for progressive feel
 
     def get_full_response(self) -> str:
         """Get the complete generated response."""

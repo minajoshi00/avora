@@ -404,25 +404,71 @@ class CompanionSpeechBubble(QWidget):
 
         self._text = text
         self.message_label.setText(text)
-        self.message_label.adjustSize()
 
-        width = max(120, min(240, self.message_label.width() + 24))
-        height = self.message_label.height() + 28
-        height = min(height, 160)
+        # -- correct word-wrap sizing -------------------------------------
+        # QLabel.adjustSize() with wordWrap=True ignores heightForWidth,
+        # which caused text clipping once the width was clamped below the
+        # single-line preferred width. Compute the height for the CLAMPED
+        # width explicitly instead.
+        max_text_width = 220
+        fm = self.message_label.fontMetrics()
+        text_width = fm.horizontalAdvance(text)
+        box_width = max(120, min(260, text_width + 24 + 24))  # + margins/border
+        label_width = box_width - 24 - 2                      # margins + border
+        rect = fm.boundingRect(
+            0, 0, label_width, 2000,
+            Qt.TextFlag.TextWordWrap, text
+        )
+        lines_height = rect.height()
+        box_height = lines_height + 20 + 2                    # margins + border
 
-        self.setFixedSize(width, height)
-        self.container.setFixedSize(width, height)
+        # Never clip: if it would exceed a sane bubble height, elide.
+        max_box_height = 180
+        if box_height > max_box_height:
+            # find how many lines fit, then elide the tail
+            line_h = fm.height()
+            fit_lines = max(1, (max_box_height - 22) // line_h)
+            elided = self._elide_lines(text, fit_lines, label_width, fm)
+            self.message_label.setText(elided)
+            rect = fm.boundingRect(
+                0, 0, label_width, max_box_height,
+                Qt.TextFlag.TextWordWrap, elided
+            )
+            box_height = rect.height() + 22
+
+        self.setFixedSize(box_width, box_height)
+        self.container.setFixedSize(box_width, box_height)
 
         screen = parent_widget.screen() or QApplication.primaryScreen()
         geo = screen.availableGeometry()
 
-        x = char_global_pos.x() - width // 2
-        y = char_global_pos.y() - height - 28
+        x = char_global_pos.x() - box_width // 2
+        y = char_global_pos.y() - box_height - 28
 
-        x = max(geo.left() + 10, min(geo.right() - width - 10, x))
-        y = max(geo.top() + 10, min(geo.bottom() - height - 10, y))
+        x = max(geo.left() + 10, min(geo.right() - box_width - 10, x))
+        y = max(geo.top() + 10, min(geo.bottom() - box_height - 10, y))
 
         self.move(x, y)
+
+    def _elide_lines(self, text, fit_lines, label_width, fm):
+        """Keep the first `fit_lines` wrapped lines and end with an
+        ellipsis on its own line, so nothing is visually clipped."""
+        words = text.split()
+        lines, current = [], ""
+        for word in words:
+            trial = f"{current} {word}".strip()
+            if fm.horizontalAdvance(trial) <= label_width:
+                current = trial
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        if len(lines) <= fit_lines:
+            return text
+        kept = lines[:max(1, fit_lines - 1)]
+        return " ".join(kept) + " …"
         self.show()
         self.raise_()
 

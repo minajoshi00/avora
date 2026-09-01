@@ -710,7 +710,15 @@ class MainWindow(QWidget):
         super().mouseReleaseEvent(event)
 
     def changeEvent(self, event):
-        """Pause expensive animations when minimized/hidden to save CPU."""
+        """Pause expensive animations when minimized/hidden to save CPU.
+
+        The character is deliberately EXCLUDED from this pause: a desktop
+        companion must keep animating while the main window is minimized.
+        On minimize the character is detached into its independent
+        floating companion window (see enter_compact_character_mode), so
+        it stays visible and its paint loop keeps producing frames. On
+        restore it is reattached without restarting its timers.
+        """
         try:
             if event.type() == QEvent.Type.WindowStateChange:
                 is_min = bool(self.windowState() & Qt.WindowState.WindowMinimized)
@@ -723,6 +731,12 @@ class MainWindow(QWidget):
                         else:
                             if not t.isActive():
                                 t.start(100 if name == "neural_timer" else 16)
+                # Character visibility across minimize/restore. Only act on
+                # actual minimized-state transitions (Windows fires
+                # WindowStateChange for activation changes too).
+                if is_min != getattr(self, "_character_was_minimized", False):
+                    self._character_was_minimized = is_min
+                    self._handle_minimize_transition(is_min)
             elif event.type() == QEvent.Type.Hide:
                 for name in ("neural_timer", "_cursor_glow_timer"):
                     t = getattr(self, name, None)
@@ -736,6 +750,29 @@ class MainWindow(QWidget):
         except Exception:
             pass
         super().changeEvent(event)
+
+    def _handle_minimize_transition(self, minimized: bool):
+        """Keep the companion alive across main-window minimize/restore.
+
+        minimized=True  → detach the character into its floating
+                          always-on-top companion window so it stays
+                          visible and keeps animating.
+        minimized=False → reattach it to the main window (timers are
+                          never stopped, so no restart/reset occurs).
+        """
+        if self.character is None:
+            return
+        try:
+            if minimized:
+                if not self.compact_character_mode and self.character.isVisible():
+                    self._minimize_compacted = True
+                    self.enter_compact_character_mode()
+            else:
+                if getattr(self, "_minimize_compacted", False):
+                    self._minimize_compacted = False
+                    self.restore_character_to_window()
+        except Exception:
+            pass
 
     # ========================================================
     # CREATE UI
@@ -1010,8 +1047,9 @@ class MainWindow(QWidget):
         self.message_widget.setObjectName("MessageArea")
 
         self.message_layout = QVBoxLayout(self.message_widget)
-        # Balanced padding: top/bottom breathing room, centered conversation width via row wrappers
-        self.message_layout.setContentsMargins(20, 20, 20, 16)
+        # Premium vertical rhythm: comfortable top breathing room below the
+        # header, side gutters, and bottom clearance above the pinned composer.
+        self.message_layout.setContentsMargins(24, 28, 24, 24)
         self.message_layout.setSpacing(14)
         self.message_layout.addStretch()
 
@@ -1309,8 +1347,6 @@ class MainWindow(QWidget):
             try:
                 self.character = Character()
 
-                self.character.setParent(self)
-
             except Exception as error:
                 print("CHARACTER CREATION ERROR:", error)
 
@@ -1318,14 +1354,32 @@ class MainWindow(QWidget):
 
                 return
 
-        except Exception as error:
-            print("CHARACTER CREATION ERROR:", error)
+        # --- FIX: Make character an independent top-level window
+        # so that minimizing the main window does NOT suppress
+        # the character's paint events / animation timer.
+        # Without this, the character is a QWidget child of the
+        # MainWindow and its painting is suspended when the
+        # parent is minimized/hidden.
+        try:
+            from PySide6.QtCore import Qt
 
-            self.character = None
-
-            return
-
-        self.character.setParent(self)
+            # Remove any parent-child relationship so the character
+            # becomes a genuine independent window.
+            if self.character.parent() is not None:
+                self.character.setParent(None)
+            # Promote to a true top-level Qt window.
+            self.character.setWindowFlags(
+                self.character.windowFlags()
+                | Qt.Window
+            )
+            # Ensure the window stays on top of all other windows
+            # so the companion is always visible.
+            self.character.setWindowFlags(
+                self.character.windowFlags()
+                | Qt.WindowStaysOnTopHint
+            )
+        except Exception:
+            pass  # non-critical — character still works as child
 
         self.character.show()
 
@@ -1487,6 +1541,15 @@ class MainWindow(QWidget):
 
             self.behavior_controller = CompanionBehaviorController(self)
             self.behavior_controller.start()
+
+            # Companion message bridge: task events -> short natural
+            # character messages through the existing speech bubble.
+            try:
+                from companion_messages import CompanionMessenger
+                self.companion_messenger = CompanionMessenger(self.behavior_controller)
+            except Exception:
+                self.companion_messenger = None
+
             self._start_companion_timer()
         except Exception as e:
             print("[COMPANION] Failed to initialize:", e)
@@ -2022,9 +2085,11 @@ class MainWindow(QWidget):
             y = -1
 
         if x < 0 or y < 0:
-            margin = 12
+            # Default: bottom-RIGHT corner so the companion never sits
+            # on top of the sidebar (left) or the conversation column.
+            margin = 16
 
-            x = margin
+            x = self.width() - self.character.width() - margin
 
             y = max(
                 margin,
@@ -2336,11 +2401,18 @@ class MainWindow(QWidget):
             center_layout.addStretch()
             center_layout.addWidget(bubble_widget)
         else:
-            center_layout.addWidget(bubble_widget)
+            # Left-aligned content that fills the centered column's width.
+            # Stretch factor 1 makes the content absorb available width first
+            # (capped by its maximum width) before any spacer takes space.
+            center_layout.addWidget(bubble_widget, 1)
             center_layout.addStretch()
 
         outer_layout.addStretch()
-        outer_layout.addWidget(center)
+        # Stretch factor 100: the conversation column wins all available
+        # width (up to its max) BEFORE the two spacer items get any share.
+        # Without this, Qt split extra space equally between the spacers and
+        # the column, collapsing the conversation into a narrow floating strip.
+        outer_layout.addWidget(center, 100)
         outer_layout.addStretch()
         return outer
 
@@ -2354,7 +2426,7 @@ class MainWindow(QWidget):
         bubble.setObjectName("UserBubble")
         bubble.setWordWrap(True)
         bubble.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        # ChatGPT-like max width: comfortable but not full-screen
+        # ChatGPT-like max width — matches the resize-reflow formula below
         chat_width = self.chat_area.viewport().width() if self.chat_area else 800
         max_w = min(560, max(240, int(chat_width * 0.62)))
         bubble.setMaximumWidth(max_w)
@@ -2368,13 +2440,17 @@ class MainWindow(QWidget):
     # ADD AI MESSAGE (RICH MARKDOWN) — POLISHED
     # ========================================================
 
-    def add_ai_message_rich(self, text, message_id=None):
+    def add_ai_message_rich(self, text, message_id=None, streaming=False):
         """Add a Markdown-rendered AI message using QTextBrowser."""
         self._update_empty_state()
+        text_str = str(text) if text is not None else ""
+        # Ghost-bubble guard: never render an empty assistant container.
+        if not text_str.strip():
+            return None
         browser = QTextBrowser()
         browser.setObjectName("AIBubble")
         chat_width = self.chat_area.viewport().width() if self.chat_area else 800
-        max_w = min(760, max(320, int(chat_width * 0.78)))
+        max_w = min(860, max(400, int(chat_width * 0.85)))
         browser.setMaximumWidth(max_w)
         browser.setMinimumHeight(40)
         browser.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
@@ -2382,31 +2458,32 @@ class MainWindow(QWidget):
         browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         browser.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
-        browser.setStyleSheet(
-            "QTextBrowser {"
-            "  background-color: #121218;"
-            "  border: 1px solid #242436;"
-            "  border-radius: 16px;"
-            "  border-bottom-left-radius: 6px;"
-            "  padding: 10px 14px;"
-            "  font-size: 14px;"
-            "  line-height: 1.6;"
-            "  color: #E6E6F0;"
-            "}"
-        )
-        html = markdown_to_html(str(text))
+        html = markdown_to_html(text_str, streaming=streaming)
         browser.setHtml(html)
         try:
-            browser.document().setDocumentMargin(4)
+            browser.document().setDocumentMargin(2)
             browser.document().setIndentWidth(12)
+            # Comfortable conversation density — QTextBrowser otherwise
+            # inherits the widget default (12pt) which reads too large.
+            browser.document().setDefaultFont(QFont("Segoe UI", 10))
         except Exception:
             pass
         QTimer.singleShot(0, lambda: self._adjust_browser_height(browser, max_w))
         if message_id:
             browser.setProperty("message_id", message_id)
-        browser.setProperty("full_text", str(text))
-        self._animate_widget_entrance(browser)
-        row_widget = self._wrap_centered_row(browser, align_right=False)
+        browser.setProperty("full_text", text_str)
+        # Subtle assistant identity above the content — continuous feed,
+        # no boxed card around the response.
+        name_label = QLabel("AVORA")
+        name_label.setObjectName("AIName")
+        container = QWidget()
+        col = QVBoxLayout(container)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(3)
+        col.addWidget(name_label)
+        col.addWidget(browser)
+        self._animate_widget_entrance(container)
+        row_widget = self._wrap_centered_row(container, align_right=False)
         self.message_layout.insertWidget(self.message_layout.count() - 1, row_widget)
         self.scroll_to_bottom()
         return browser
@@ -2465,7 +2542,9 @@ class MainWindow(QWidget):
                 max_w = min(560, max(240, int(chat_width * 0.62)))
                 bubble.setMaximumWidth(max_w)
             elif bubble.objectName() == "AIBubble":
-                max_w = min(760, max(320, int(chat_width * 0.78)))
+                # Same formula used at message creation — keeps text width
+                # consistent between initial render and window resizes.
+                max_w = min(860, max(400, int(chat_width * 0.85)))
                 bubble.setMaximumWidth(max_w)
                 QTimer.singleShot(0, lambda b=bubble, w=max_w: self._adjust_browser_height(b, w))
             # Update center wrapper max width
@@ -2668,6 +2747,74 @@ class MainWindow(QWidget):
             except Exception:
                 pass
             self.dots_label = None
+
+    # ========================================================
+    # ERROR MESSAGE — POLISHED NOTIFICATION (NOT A BUBBLE)
+    # ========================================================
+
+    def add_error_message(self, user_message=None):
+        """Render a clean AVORA-branded error notification with Retry.
+
+        No empty bubble, no duplicate error boxes — a single subtle
+        notification that fits the conversation feed.
+        """
+        self._update_empty_state()
+
+        note = QWidget()
+        note.setObjectName("ErrorNote")
+        note.setMaximumWidth(560)
+        note.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+
+        note_layout = QVBoxLayout(note)
+        note_layout.setContentsMargins(14, 10, 14, 10)
+        note_layout.setSpacing(6)
+
+        name_label = QLabel("AVORA")
+        name_label.setObjectName("AIName")
+        note_layout.addWidget(name_label)
+
+        body = QLabel(
+            "Sorry brooo 😭\n\n"
+            "Something went wrong while processing your request.\n"
+            "Please try again."
+        )
+        body.setWordWrap(True)
+        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        note_layout.addWidget(body)
+
+        # Keep retry functionality — reuse the existing regenerate path
+        if user_message:
+            retry_btn = QPushButton("↻ Retry")
+            retry_btn.setFixedHeight(26)
+            retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            retry_btn.setToolTip("Try sending your message again")
+            retry_btn.setStyleSheet(
+                "QPushButton {"
+                "  background: transparent;"
+                "  border: 1px solid rgba(255,107,107,0.35);"
+                "  border-radius: 12px;"
+                "  padding: 3px 12px;"
+                "  color: #FF9B9B;"
+                "  font-size: 11px;"
+                "}"
+                "QPushButton:hover {"
+                "  background: rgba(255,107,107,0.10);"
+                "  color: #FFC4C4;"
+                "  border-color: rgba(255,107,107,0.55);"
+                "}"
+                "QPushButton:focus {"
+                "  border-color: rgba(255,107,107,0.75);"
+                "}"
+            )
+            retry_btn.clicked.connect(
+                lambda checked, msg=user_message: self.regenerate_response(msg)
+            )
+            note_layout.addWidget(retry_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self._animate_widget_entrance(note)
+        row_widget = self._wrap_centered_row(note, align_right=False)
+        self.message_layout.insertWidget(self.message_layout.count() - 1, row_widget)
+        self.scroll_to_bottom()
 
     # ========================================================
     # IMAGE MESSAGE
@@ -2916,6 +3063,14 @@ class MainWindow(QWidget):
         self._current_browser = None
         self._current_full_text = ""
 
+        # Companion: acknowledge the request like a friend would
+        messenger = getattr(self, "companion_messenger", None)
+        if messenger is not None:
+            try:
+                messenger.announce(CompanionEvent.TASK_STARTED)
+            except Exception:
+                pass
+
         # Connect signals
         self.worker.stream_started.connect(self._on_stream_started)
         self.worker.chunk_ready.connect(self._on_chunk_ready)
@@ -2935,25 +3090,43 @@ class MainWindow(QWidget):
     # ========================================================
 
     def _on_stream_started(self):
-        """Called when streaming begins - create the message bubble."""
+        """Called when streaming begins.
+
+        Do NOT create an empty assistant container here — that was the
+        ghost/empty-bubble bug. Keep the AVORA typing indicator visible
+        until the first real chunk arrives.
+        """
         if self.is_closing:
             return
 
-        self.remove_thinking()
-        self._current_browser = self.add_ai_message_rich("")
+        self._current_browser = None
         self._current_full_text = ""
         # Ensure status reflects active streaming
         self.update_status("thinking", "Creating")
 
     def _on_chunk_ready(self, chunk):
         """Called when a new chunk of text is available."""
-        if self.is_closing or self._current_browser is None:
+        if self.is_closing:
             return
 
-        self._current_full_text += chunk
+        text_chunk = str(chunk)
 
-        # Update the browser with rendered HTML
-        html = markdown_to_html(self._current_full_text)
+        # First token: swap the typing indicator for the real response
+        # in-place — the indicator disappears the moment content exists.
+        if self._current_browser is None:
+            if not text_chunk.strip():
+                return
+            self.remove_thinking()
+            self._current_browser = self.add_ai_message_rich(text_chunk, streaming=True)
+            self._current_full_text = text_chunk
+            return
+
+        self._current_full_text += text_chunk
+
+        # Update the browser with rendered HTML. streaming=True hides
+        # trailing incomplete markers (### / ** / `) so raw Markdown
+        # never flashes while the response is arriving.
+        html = markdown_to_html(self._current_full_text, streaming=True)
         self._current_browser.setHtml(html)
 
         # Adjust height
@@ -2967,6 +3140,19 @@ class MainWindow(QWidget):
             return
 
         self._current_full_text = str(full_text)
+
+        # Safety: if no chunks ever rendered (empty/whitespace-only reply),
+        # do NOT create a ghost bubble — just finalize state.
+        if self._current_browser is None:
+            if str(full_text).strip():
+                self._current_browser = self.add_ai_message_rich(full_text)
+            if self._current_browser is None:
+                self.update_status("ready", "Ready")
+                self.character_call("set_thinking", False)
+                self.character_call("set_expression", "idle")
+                self.set_processing_state(False)
+                self.cleanup_worker()
+                return
 
         # Final render
         if self._current_browser is not None:
@@ -3017,20 +3203,20 @@ class MainWindow(QWidget):
         self.character_call("set_expression", "sad")
         self.character_call("react", "error", {"message": "Something went wrong."})
 
+        messenger = getattr(self, "companion_messenger", None)
+        if messenger is not None:
+            try:
+                messenger.announce(CompanionEvent.TASK_FAILED)
+            except Exception:
+                pass
+
         if self.companion is not None:
             self.companion.on_error(error_msg)
 
-        self.add_ai_message_rich(
-            "Sorry brooo 😭\n\n"
-            "Something went wrong while processing your request.\n\n"
-            "Please try again."
-        )
-
-        self._append_assistant_message_to_chat(
-            "Sorry brooo 😭\n\n"
-            "Something went wrong while processing your request.\n\n"
-            "Please try again."
-        )
+        # Clean single error notification — no empty bubble, no duplicates.
+        # (Errors are not persisted as assistant messages, so reloading the
+        # conversation never shows a duplicate error bubble.)
+        self.add_error_message(self._current_message)
 
         print("========== AI ERROR ==========")
         print(error_msg)
@@ -3093,7 +3279,10 @@ class MainWindow(QWidget):
         outer_layout = QHBoxLayout(outer)
         outer_layout.setContentsMargins(0, 2, 0, 2)
         outer_layout.addStretch()
-        outer_layout.addWidget(btn_center)
+        # Factor 100: the action column claims full width (up to 860px) so the
+        # button aligns with the LEFT edge of the conversation column, matching
+        # the AVORA response above it — instead of floating mid-viewport.
+        outer_layout.addWidget(btn_center, 100)
         outer_layout.addStretch()
         self.message_layout.insertWidget(row_index + 1, outer)
 
@@ -3165,9 +3354,7 @@ class MainWindow(QWidget):
         self.character_call("set_thinking", False)
         self.character_call("set_expression", "sad")
 
-        self.add_ai_message_rich(
-            "Sorry brooo 😭\n\nCould not regenerate the response.\n\nPlease try again."
-        )
+        self.add_error_message(self._current_message)
 
         self.set_processing_state(False)
 

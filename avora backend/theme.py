@@ -574,14 +574,33 @@ def generate_qss() -> str:
     }}
 
     #AIBubble {{
-        background-color: {ch["ai_bubble"]};
-        border: 1px solid {ch["ai_border"]};
-        border-radius: 16px;
-        border-bottom-left-radius: 6px;
-        padding: 12px 16px;
+        background-color: transparent;
+        border: none;
+        padding: 0px 0px;
         font-size: 14px;
         line-height: 1.6;
         color: {ch["ai_text"]};
+    }}
+
+    #AIName {{
+        color: {a["default"]};
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.8px;
+        background: transparent;
+    }}
+
+    #ErrorNote {{
+        background-color: {sem["error_bg"]};
+        border: 1px solid rgba(255, 107, 107, 0.22);
+        border-left: 3px solid {sem["error"]};
+        border-radius: 10px;
+    }}
+
+    #ErrorNote QLabel {{
+        color: {tx["primary"]};
+        font-size: 13px;
+        background: transparent;
     }}
 
     #ImageBubble {{

@@ -175,6 +175,10 @@ CATEGORIES = [
         "System",
         "Application information",
     ),
+    (
+        "Agent Permissions",
+        "AVORA agent action preferences and memory",
+    ),
 ]
 
 
@@ -742,6 +746,7 @@ class SettingsPage(QWidget):
             "Personality": self.build_personality,
             "Timer": self.build_timer,
             "System": self.build_system,
+            "Agent Permissions": self.build_agent_permissions,
         }
 
         builder = builders.get(category_name)
@@ -1812,6 +1817,97 @@ class SettingsPage(QWidget):
         )
 
         self.add_spacer()
+
+    # ============================================================
+    # AGENT PERMISSIONS
+    # ============================================================
+
+    def build_agent_permissions(self):
+
+        self.add_section(
+            "Agent Permissions",
+            "Set AVORA's permission preferences for agent actions.",
+        )
+
+        from settings import get_setting, set_setting
+
+        # Browser actions
+        self.add_switch(
+            "agent_permissions.browser.open",
+            "Open applications",
+            "Allow AVORA to open applications.",
+            default=True,
+        )
+
+        self.add_switch(
+            "agent_permissions.browser.navigate",
+            "Browser navigation",
+            "Allow AVORA to navigate and browse websites.",
+            default=True,
+        )
+
+        self.add_switch(
+            "agent_permissions.browser.search",
+            "Browser search",
+            "Allow AVORA to perform web searches.",
+            default=True,
+        )
+
+        # Application actions
+        self.add_switch(
+            "agent_permissions.application.open",
+            "Open applications",
+            "Allow AVORA to launch applications.",
+            default=True,
+        )
+
+        # File actions
+        self.add_switch(
+            "agent_permissions.filesystem.read",
+            "Read files",
+            "Allow AVORA to read files and inspect directories.",
+            default=True,
+        )
+
+        self.add_switch(
+            "agent_permissions.filesystem.write",
+            "File create/modify",
+            "Allow AVORA to create or modify files.",
+            default=True,
+        )
+
+        self.add_switch(
+            "agent_permissions.filesystem.delete",
+            "File deletion",
+            "Allow AVORA to delete files. (High-risk actions always require confirmation regardless of this setting.)",
+            default=False,
+        )
+
+        # System actions
+        self.add_switch(
+            "agent_permissions.windows.settings",
+            "Windows settings",
+            "Allow AVORA to change Windows settings.",
+            default=False,
+        )
+
+        # Power actions
+        self.add_switch(
+            "agent_permissions.power.shutdown",
+            "System shutdown/restart",
+            "Allow AVORA to shut down or restart the computer. (High-risk actions always require confirmation.)",
+            default=False,
+        )
+
+        # Note about high-risk confirmation
+        self.add_section(
+            "High-risk confirmation note",
+            "The above preferences control convenience for permitted actions. "
+            "HIGH-risk actions (file deletion, system changes, etc.) always require "
+            "explicit user confirmation regardless of these settings, as per AVORA's "
+            "safety policy. Changing a preference from 'Allow always' to 'Ask every time' "
+            "takes effect immediately for future tasks.",
+        )
 
     # ============================================================
     # POWER

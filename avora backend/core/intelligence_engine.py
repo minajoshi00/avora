@@ -29,37 +29,20 @@ from pathlib import Path
 from app_database import get_database
 from app_paths import APP_DATA_DIR
 
-logger = logging.getLogger("IntelligenceEngine")
+from .task import (
+    TaskEntity,
+    TaskAction,
+    TaskContext,
+    TaskPlan,
+    DetectedIntent,
+    TaskResult,
+    IntentType as TaskIntentType,
+    logger,
+)
 
-
-class IntentType(Enum):
-    """Types of user intents that can be detected."""
-    OPEN_APP = "open_app"
-    OPEN_FILE = "open_file"
-    OPEN_FOLDER = "open_folder"
-    SEARCH_WEB = "search_web"
-    SEARCH_FILES = "search_files"
-    PLAY_MEDIA = "play_media"
-    CALCULATE = "calculate"
-    SET_TIMER = "set_timer"
-    WEATHER = "weather"
-    WEATHER_QUERY = "weather_query"
-    REMIND = "remind"
-    NOTE = "note"
-    SETTING_CHANGE = "setting_change"
-    POWER_ACTION = "power_action"
-    LAUNCH_GAME = "launch_game"
-    CODING_HELP = "coding_help"
-    LEARNING = "learning"
-    STUDY = "study"
-    WRITE = "write"
-    PROACTIVE_HINT = "proactive_hint"
-    CONTEXT_QUERY = "context_query"
-    GREETING = "greeting"
-    FAREWELL = "farewell"
-    JAVASCRIPT_EXECUTE = "javascript_execute"
-    PYTHON_EXECUTE = "python_execute"
-    UNKNOWN = "unknown"
+# Intent types now come from task.py TaskIntentType
+# We define local aliases for backward compatibility
+IntentType = TaskIntentType  # Alias for the task.py IntentType
 
 
 @dataclass
@@ -84,6 +67,7 @@ class DetectedIntent:
     confidence: float
     entities: Dict[str, Any] = field(default_factory=dict)
     raw_match: Optional[str] = None
+    context_needed: Optional[str] = None
     
     def is_high_confidence(self, threshold: float = 0.7) -> bool:
         """Check if intent confidence meets threshold."""
@@ -247,7 +231,7 @@ class IntelligenceEngine:
             logger.debug(f"State save error: {e}")
     
     def process_request(self, user_input: str, 
-                        context: Optional[ContextSnapshot] = None,
+                        context: Optional[TaskContext] = None,
                         source: str = "voice") -> Dict[str, Any]:
         """
         Process a user request through the complete pipeline.
@@ -317,123 +301,527 @@ class IntelligenceEngine:
         return text.strip()
     
     def _detect_intent(self, request: UserRequest, 
-                       context: Optional[ContextSnapshot] = None) -> Optional[DetectedIntent]:
+                           context: Optional[TaskContext] = None) -> Optional[DetectedIntent]:
         """
         Detect user intent from the request.
         
         This is the first major step in the pipeline.
         Uses pattern matching for common intents, can extend to AI-based detection.
+        Returns a structured DetectedIntent with entities and context needs.
         """
         normalized = request.normalized_text
         
-        patterns = [
-            (r"^(open|launch|start)\s+(?:my\s+|the\s+)?(.+)$", IntentType.OPEN_APP),
-            (r"^(open|start)\s+(?:the\s+)?file\s+(.+)$", IntentType.OPEN_FILE),
-            (r"^(open|start)\s+(?:the\s+)?folder\s+(.+)$", IntentType.OPEN_FOLDER),
-            (r"^(search|look\s+up|google)\s+(?:for\s+)?(.+)$", IntentType.SEARCH_WEB),
-            (r"^(what\s+is|calculate|what's\s+the\s+)?(.+?)\s*=\s*(.+)$", IntentType.CALCULATE),
-            (r"^(set\s+)?(?:timer|reminder)\s+(?:for\s+)?(\d+)\s*(second|minute|hour)s?", IntentType.SET_TIMER),
-            (r"^(weather|how\s+is\s+the\s+weather)\s*(?:in\s+(.+))?", IntentType.WEATHER_QUERY),
-            (r"^(shutdown|restart|sleep|lock)\s+(?:my\s+)?computer", IntentType.POWER_ACTION),
-            (r"^(open|launch|start)\s+(?:the\s+)?(?:game|games?\s+(.+))", IntentType.LAUNCH_GAME),
-            (r"^(define|meaning of|what is)\s+(.+)", IntentType.LEARNING),
-            (r"^(remind|remember|note)\s+(.+)", IntentType.NOTE),
-        ]
+        # Extract entities and intent from pattern matching
+        entities: Dict[str, Any] = {}
+        intent: Optional[IntentType] = None
+        target = ""
+        context_needed: List[str] = []
         
-        for pattern, intent_type in patterns:
-            match = re.search(pattern, normalized)
-            if match:
-                return DetectedIntent(
-                    intent=intent_type,
-                    target=match.group(2) if match.lastindex >= 2 else "",
-                    confidence=0.85,
-                    entities={"regex_group_1": match.group(1), "regex_group_2": match.group(2) if match.lastindex >= 2 else None},
-                )
+        # Pattern: "open <application>" — handles "Open X and <do Y>" syntax
+        match = re.search(r"^(open|launch|start)\s+(?:my\s+|the\s+)?(.+)$", normalized)
+        if match:
+            raw_target = match.group(2).strip()
+            # ---------------------------------------------------------
+            # GENERAL SEMANTIC SPLIT — "Open X and <do Y>"
+            # An "and"-joined sentence describes MULTIPLE intents, not a
+            # single application name. The part after "and" carries its own
+            # verb (search/find/check/play/message...), so the whole
+            # remainder must NEVER be launched as an application
+            # (e.g. OPEN_APPLICATION("check for Atharba Bhandari")).
+            # We plan the leading OPEN step here; the follow-up intent is
+            # detected separately below so a second action can be chained.
+            # ---------------------------------------------------------
+            and_parts = re.split(r"\s+and\s+|,\s*then\s+|,\s+then\s+", raw_target, maxsplit=1)
+            if len(and_parts) == 2:
+                intent = IntentType.OPEN_APP
+                target = and_parts[0].strip()
+                follow_up = and_parts[1].strip()
+                entities["raw_target"] = target
+                entities["follow_up"] = follow_up
+                context_needed.append("application_resolution")
+                # Classify the follow-up clause by its own verb phrase.
+                # We use a broader set of verbs to correctly route the
+                # follow-up to the right capability (browser search, media,
+                # more app actions, or inspection).
+                fu = follow_up.lower().strip()
+                # Media/play actions
+                if re.match(r"^(play|watch)\b", fu):
+                    entities["follow_up_intent"] = "play_media"
+                # Browser/web inspection actions — this is the key fix:
+                # "check who got first msg", "read the latest message",
+                # "find my friend", etc. should ALL route to web search
+                # so the user can inspect the result, NOT to open_application.
+                elif re.match(r"^(find|check|look|read|inspect|verify)\b", fu):
+                    # Broadly route all inspection-type follow-ups to search_web
+                    # so the user can browse/inspect the results.
+                    entities["follow_up_intent"] = "search_web"
+                # Open/navigate follow-ups
+                elif re.match(r"^(open|go to|visit)\b", fu):
+                    entities["follow_up_intent"] = "open"
+                # Search/web search follow-ups
+                elif re.match(r"^(search|lookup|google)\b", fu):
+                    entities["follow_up_intent"] = "search_web"
+                # Media actions
+                elif re.match(r"^(play|watch)\b", fu):
+                    entities["follow_up_intent"] = "play_media"
+                # Default: route to search_web for inspection
+                else:
+                    entities["follow_up_intent"] = "search_web"
+            else:
+                intent = IntentType.OPEN_APP
+                target = raw_target
+                entities["raw_target"] = target
+                context_needed.append("application_resolution")
         
-        if any(word in normalized for word in ["python", "python script", ".py"]):
-            return DetectedIntent(
-                intent=IntentType.PYTHON_EXECUTE,
-                target=normalized,
-                confidence=0.7,
-            )
+        # Pattern: "open <file>"
+        match = re.search(r"^(open|start)\s+(?:the\s+)?file\s+(.+)$", normalized)
+        if match:
+            intent = IntentType.OPEN_FILE
+            target = match.group(2).strip()
+            entities["raw_target"] = target
+            context_needed.append("file_resolution")
         
-        if any(word in normalized for word in ["javascript", "js", ".js"]):
-            return DetectedIntent(
-                intent=IntentType.JAVASCRIPT_EXECUTE,
-                target=normalized,
-                confidence=0.7,
-            )
+        # Pattern: "open <folder>"
+        match = re.search(r"^(open|start)\s+(?:the\s+)?folder\s+(.+)$", normalized)
+        if match:
+            intent = IntentType.OPEN_FOLDER
+            target = match.group(2).strip()
+            entities["raw_target"] = target
+            context_needed.append("folder_resolution")
         
-        if normalized in ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]:
-            return DetectedIntent(
-                intent=IntentType.GREETING,
-                target=normalized,
-                confidence=0.9,
-            )
+        # Pattern: "search web for <query>"
+        match = re.search(r"^(search|look\s+up|google)\s+(?:for\s+)?(.+)$", normalized)
+        if match:
+            intent = IntentType.SEARCH_WEB
+            target = match.group(2).strip()
+            entities["raw_target"] = target
+            context_needed.append("web_search")
         
-        if normalized in ["bye", "goodbye", "see you", "bye bye"]:
-            return DetectedIntent(
-                intent=IntentType.FAREWELL,
-                target=normalized,
-                confidence=0.9,
-            )
+        # Pattern: "calculate <expr>"
+        match = re.search(r"^(what\s+is|calculate|what's\s+the\s+)?(.+?)\s*=\s*(.+)$", normalized)
+        if match:
+            intent = IntentType.CALCULATE
+            target = f"{match.group(2).strip()} = {match.group(3).strip()}"
+            entities["expression"] = match.group(2).strip()
+            entities["result"] = match.group(3).strip()
+            context_needed.append("calculation")
+        
+        # Pattern: "set timer <duration>"
+        match = re.search(r"^(set\s+)?(?:timer|reminder)\s+(?:for\s+)?(\d+)\s*(second|minute|hour)s?", normalized)
+        if match:
+            intent = IntentType.SET_TIMER
+            duration = match.group(2).strip()
+            unit = match.group(3).strip()
+            target = f"timer for {duration} {unit}"
+            entities["duration"] = duration
+            entities["unit"] = unit
+            context_needed.append("timer_setup")
+        
+        # Pattern: "weather in <location>"
+        match = re.search(r"^(weather|how\s+is\s+the\s+weather)\s*(?:in\s+(.+))?", normalized)
+        if match:
+            intent = IntentType.WEATHER_QUERY
+            location = match.group(2).strip() if match.group(2) else ""
+            target = f"weather in {location}"
+            entities["location"] = location
+            context_needed.append("weather_lookup")
+        
+        # Pattern: "shutdown/restart/sleep/lock computer"
+        match = re.search(r"^(shutdown|restart|sleep|lock)\s+(?:my\s+)?computer", normalized)
+        if match:
+            intent = IntentType.POWER_ACTION
+            target = match.group(1).strip()
+            entities["action"] = target
+            context_needed.append("power_action")
+        
+        # Pattern: "open <game>"
+        match = re.search(r"^(open|launch|start)\s+(?:the\s+)?(?:game|games?\s+(.+))", normalized)
+        if match:
+            intent = IntentType.LAUNCH_GAME
+            target = match.group(2).strip() if match.group(2) else ""
+            entities["raw_target"] = target
+            context_needed.append("game_resolution")
+        
+        # Pattern: "define <term>" or "what is <term>"
+        match = re.search(r"^(define|meaning of|what is)\s+(.+)", normalized)
+        if match:
+            intent = IntentType.LEARNING
+            target = match.group(2).strip()
+            entities["term"] = target
+            context_needed.append("learning_lookup")
+        
+        # Pattern: "remind/remember/note <thing>"
+        match = re.search(r"^(remind|remember|note)\s+(.+)", normalized)
+        if match:
+            intent = IntentType.NOTE
+            target = match.group(2).strip()
+            entities["note_content"] = target
+            context_needed.append("note_creation")
+        
+        # If no pattern matched, check for known keywords
+        if intent is None:
+            lower = normalized
+            if any(word in lower for word in ["python", "python script", ".py"]):
+                intent = IntentType.PYTHON_EXECUTE
+                target = normalized
+                entities["code"] = normalized
+                context_needed.append("code_execution")
+            elif any(word in lower for word in ["javascript", "js", ".js"]):
+                intent = IntentType.JAVASCRIPT_EXECUTE
+                target = normalized
+                entities["code"] = normalized
+                context_needed.append("code_execution")
+            elif normalized in ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]:
+                intent = IntentType.GREETING
+                target = normalized
+                context_needed.append("greeting")
+            elif normalized in ["bye", "goodbye", "see you", "bye bye"]:
+                intent = IntentType.FAREWELL
+                target = normalized
+                context_needed.append("farewell")
+            else:
+                intent = IntentType.UNKNOWN
+                target = normalized
+        
+        # Build entities dict with normalized values
+        normalized_entities: Dict[str, Any] = {}
+        for key, value in entities.items():
+            if isinstance(value, str):
+                normalized_entities[key] = value.lower().strip()
+            else:
+                normalized_entities[key] = value
+        
+        # Use the target from the matched pattern, or fall back to normalized
+        final_target = target if target else normalized
         
         return DetectedIntent(
-            intent=IntentType.UNKNOWN,
-            target=normalized,
-            confidence=0.3,
+            intent=intent,
+            target=final_target,
+            confidence=0.85 if intent else 0.3,
+            entities=normalized_entities,
+            raw_match=normalized,
+            context_needed=context_needed,
         )
-    
-    def _collect_context(self) -> ContextSnapshot:
+
+    def _collect_context(self) -> TaskContext:
         """Collect current system context."""
-        return ContextSnapshot()
+        return TaskContext()
     
-    def _plan_action(self, intent: DetectedIntent, 
-                      context: ContextSnapshot,
-                      request: UserRequest) -> ActionPlan:
+    def _plan_action(self, intent: DetectedIntent,
+                     context: TaskContext,
+                     request: UserRequest) -> TaskPlan:
         """
-        Create an action plan based on the detected intent.
+        Create a structured action plan based on the detected intent.
         
-        This is where multi-step planning happens.
+        This creates a proper TaskPlan with TaskActions, including
+        prerequisites, dependencies, expected results, and verification.
         """
-        plan = ActionPlan(steps=[], priority=5, requires_confirmation=False)
+        plan = TaskPlan(
+            goal=request.normalized_text,
+            intent=intent.intent,
+            entities=[TaskEntity(type=et, value=val) for et, val in intent.entities.items()],
+            context=context,
+        )
         
-        skill_mapping = {
-            IntentType.OPEN_APP: ("launcher_skill", "open_application"),
-            IntentType.OPEN_FILE: ("files_skill", "open_file"),
-            IntentType.OPEN_FOLDER: ("files_skill", "open_folder"),
-            IntentType.SEARCH_WEB: ("browser_skill", "search"),
-            IntentType.CALCULATE: ("calculator_skill", "calculate"),
-            IntentType.SET_TIMER: ("timer_skill", "set_timer"),
-            IntentType.WEATHER_QUERY: ("weather_skill", "get_weather"),
-            IntentType.POWER_ACTION: ("power_skill", "execute_power_action"),
-            IntentType.LAUNCH_GAME: ("games_skill", "launch_game"),
-            IntentType.LEARNING: ("learning_skill", "answer_question"),
-            IntentType.NOTE: ("memory_skill", "create_note"),
-            IntentType.PYTHON_EXECUTE: ("coding_skill", "execute_python"),
-            IntentType.JAVASCRIPT_EXECUTE: ("coding_skill", "execute_javascript"),
-            IntentType.GREETING: ("personality_skill", "greet"),
-            IntentType.FAREWELL: ("personality_skill", "farewell"),
+        # Map intent to actions based on the intent type and entities
+        intent_mapping = {
+            IntentType.OPEN_APP: self._plan_open_app,
+            IntentType.OPEN_FILE: self._plan_open_file,
+            IntentType.OPEN_FOLDER: self._plan_open_folder,
+            IntentType.SEARCH_WEB: self._plan_search_web,
+            IntentType.CALCULATE: self._plan_calculate,
+            IntentType.SET_TIMER: self._plan_set_timer,
+            IntentType.WEATHER_QUERY: self._plan_weather_query,
+            IntentType.POWER_ACTION: self._plan_power_action,
+            IntentType.LAUNCH_GAME: self._plan_launch_game,
+            IntentType.LEARNING: self._plan_learning,
+            IntentType.NOTE: self._plan_note,
+            IntentType.PYTHON_EXECUTE: self._plan_code_execute,
+            IntentType.JAVASCRIPT_EXECUTE: self._plan_code_execute,
+            IntentType.GREETING: self._plan_greeting,
+            IntentType.FAREWELL: self._plan_farewell,
         }
         
-        skill_info = skill_mapping.get(intent.intent, ("core_skill", "handle_unknown"))
+        mapper = intent_mapping.get(intent.intent)
+        if mapper:
+            mapper(plan, intent, request)
         
-        plan.add_step(
-            skill_name=skill_info[0],
-            action=skill_info[1],
-            params={
-                "target": intent.target,
-                "entities": intent.entities,
-                "confidence": intent.confidence,
-                "context": context.to_dict() if context else {},
-            }
-        )
+        # If no specific mapper matched, create a default plan
+        if not plan.is_valid():
+            plan.add_action(TaskAction(
+                action="handle_unknown",
+                target=intent.target,
+            ))
         
         return plan
     
-    def _execute_plan(self, plan: ActionPlan, 
-                      context: ContextSnapshot,
-                      request: UserRequest) -> Dict[str, Any]:
+    def _plan_open_app(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for opening an application."""
+        target = intent.target
+        entities = intent.entities
+        
+        # Check if target is a known application or needs resolution
+        plan.add_action(TaskAction(
+            action="open",
+            target=target,
+            context=entities.get("application_context"),
+            expected_result=f"Application '{target}' is running",
+            verification=f"Check that {target} window is active",
+        ))
+        
+        # Add prerequisite: application must be installed
+        plan.prerequisites.append(f"Application '{target}' must be installed")
+        
+        # Set dependency on application resolution
+        if "application" in entities:
+            plan.dependencies["application_resolution"] = [target]
+        
+        # -------------------------------------------------------------
+        # GENERAL SEMANTIC CHAINING — the follow-up clause of
+        # "Open X and <do Y>" becomes a SECOND plan action that consumes
+        # the first step's output (the opened application as context).
+        # This is intent-driven, not tied to any specific application.
+        # -------------------------------------------------------------
+        follow_up_intent = entities.get("follow_up_intent")
+        if follow_up_intent:
+            fu_target = entities.get("follow_up", "")
+            # A third chained clause ("..., then open the first result")
+            # is split off so the final step can consume step 2's output.
+            then_parts = re.split(r",\s*then\s+|,\s+then\s+|\s+then\s+", fu_target, maxsplit=1)
+            if len(then_parts) == 2:
+                fu_target = then_parts[0].strip()
+                third_clause = then_parts[1].strip()
+            else:
+                third_clause = None
+            if follow_up_intent == "search_web":
+                # Strip the verb from "search for X"
+                fu_target = re.sub(r"^(search|look\s+up|google)\s*(?:for\s+)?", "", fu_target, flags=re.IGNORECASE).strip()
+                plan.add_action(TaskAction(
+                    action="search_web",
+                    target=fu_target,
+                    params={"skill": "browser_skill", "query": fu_target},
+                    context=entities.get("raw_target"),
+                    expected_result=f"Search results for '{fu_target}'",
+                    verification="Check that search results page loaded",
+                ))
+            elif follow_up_intent == "play_media":
+                fu_target = re.sub(r"^(play|watch)\s+", "", fu_target, flags=re.IGNORECASE).strip()
+                plan.add_action(TaskAction(
+                    action="play_media",
+                    target=fu_target,
+                    params={"skill": "browser_skill", "target": fu_target},
+                    context=entities.get("raw_target"),
+                    expected_result=f"Media '{fu_target}' playing",
+                    verification="Check that media playback started",
+                ))
+            elif follow_up_intent == "open":
+                fu_target = re.sub(r"^(open|go\s+to)\s+", "", fu_target, flags=re.IGNORECASE).strip()
+                plan.add_action(TaskAction(
+                    action="open",
+                    target=fu_target,
+                    context=entities.get("raw_target"),
+                    expected_result=f"'{fu_target}' opened",
+                    verification=f"Check that '{fu_target}' opened",
+                ))
+            else:  # find_entity (person/file/entity) — route to search_web
+                # since browser_skill.find_entity is not implemented; use
+                # web search instead so the user can inspect results.
+                fu_target = re.sub(r"^(find|check|look)\s*(?:for\s+|up\s+)?", "", fu_target, flags=re.IGNORECASE).strip()
+                plan.add_action(TaskAction(
+                    action="search_web",
+                    target=fu_target,
+                    params={"skill": "browser_skill", "query": fu_target},
+                    context=entities.get("raw_target"),
+                    expected_result=f"Search results for '{fu_target}' appear",
+                    verification="Check that search results page loaded",
+                ))
+            # ---------------------------------------------------------
+            # THIRD CHAINED STEP — consumes the PREVIOUS step's output as
+            # its context (e.g. "open the first result" acts on the search
+            # step's results, not on a fresh query).
+            # ---------------------------------------------------------
+            if third_clause:
+                third_verb = re.match(r"^(open|go\s+to|click)\s+(.*)", third_clause, flags=re.IGNORECASE)
+                if third_verb:
+                    third_target = third_verb.group(2).strip()
+                    plan.add_action(TaskAction(
+                        action="open",
+                        target=third_target,
+                        params={"consume_previous_output": True},
+                        # context = the SECOND step's target (the search/entity
+                        # result) — this is the context-propagation contract.
+                        context=fu_target,
+                        expected_result=f"'{third_target}' opened from previous step's output",
+                        verification=f"Check that '{third_target}' opened",
+                    ))
+    
+    def _plan_open_file(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for opening a file."""
+        target = intent.target
+        entities = intent.entities
+        
+        plan.add_action(TaskAction(
+            action="open_file",
+            target=target,
+            expected_result=f"File '{target}' is opened",
+            verification=f"Check that file '{target}' is accessible",
+        ))
+        
+        # Determine location/context
+        location = entities.get("file_location", "current")
+        plan.prerequisites.append(f"File '{target}' must exist at location: {location}")
+    
+    def _plan_open_folder(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for opening a folder."""
+        target = intent.target
+        
+        plan.add_action(TaskAction(
+            action="open_folder",
+            target=target,
+            expected_result=f"Folder '{target}' is opened",
+            verification=f"Check that folder '{target}' is accessible",
+        ))
+        
+        plan.prerequisites.append(f"Folder '{target}' must exist")
+    
+    def _plan_search_web(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for searching the web."""
+        target = intent.target
+        entities = intent.entities
+        query = target
+        
+        plan.add_action(TaskAction(
+            action="search_web",
+            target=query,
+            context=entities.get("search_context"),
+            expected_result=f"Search results for '{query}' appear",
+            verification=f"Check that search results for '{query}' are displayed",
+        ))
+        
+        plan.prerequisites.append(f"Internet access required for web search")
+    
+    def _plan_calculate(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for calculation."""
+        target = intent.target
+        entities = intent.entities
+        expression = entities.get("expression", target)
+        
+        plan.add_action(TaskAction(
+            action="calculate",
+            target=expression,
+            expected_result=f"Calculation '{expression}' completed",
+            verification=f"Check calculation result is correct",
+        ))
+    
+    def _plan_set_timer(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for setting a timer."""
+        target = intent.target
+        entities = intent.entities
+        duration = entities.get("duration", "")
+        unit = entities.get("unit", "minutes")
+        
+        plan.add_action(TaskAction(
+            action="set_timer",
+            target=f"{duration} {unit}",
+            expected_result=f"Timer set for {duration} {unit}",
+            verification=f"Check that timer is running for {duration} {unit}",
+        ))
+    
+    def _plan_weather_query(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for weather query."""
+        target = intent.target
+        entities = intent.entities
+        location = entities.get("location", "")
+        
+        plan.add_action(TaskAction(
+            action="get_weather",
+            target=location,
+            expected_result=f"Weather information for '{location}' retrieved",
+            verification=f"Check weather display for '{location}'",
+        ))
+        
+        plan.prerequisites.append(f"Internet access required for weather lookup")
+    
+    def _plan_power_action(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for power action."""
+        target = intent.target
+        entities = intent.entities
+        action = entities.get("action", target)
+        
+        plan.add_action(TaskAction(
+            action=f"execute_{action}",
+            target=f"{action} computer",
+            expected_result=f"{action.title()} computer completed",
+            verification=f"Check that {action} action completed",
+        ))
+    
+    def _plan_launch_game(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for launching a game."""
+        target = intent.target
+        
+        plan.add_action(TaskAction(
+            action="launch_game",
+            target=target,
+            expected_result=f"Game '{target}' is launched",
+            verification=f"Check that game '{target}' is running",
+        ))
+        
+        plan.prerequisites.append(f"Game '{target}' must be installed")
+    
+    def _plan_learning(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for learning/query."""
+        target = intent.target
+        
+        plan.add_action(TaskAction(
+            action="answer_question",
+            target=target,
+            expected_result=f"Answer to '{target}' provided",
+            verification=f"Check that answer was given",
+        ))
+    
+    def _plan_note(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for creating a note."""
+        target = intent.target
+        
+        plan.add_action(TaskAction(
+            action="create_note",
+            target=target,
+            expected_result=f"Note '{target}' created",
+            verification=f"Check that note '{target}' exists",
+        ))
+    
+    def _plan_code_execute(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for code execution."""
+        target = intent.target
+        
+        plan.add_action(TaskAction(
+            action="execute_code",
+            target=target,
+            expected_result=f"Code executed successfully",
+            verification=f"Check code execution output",
+        ))
+    
+    def _plan_greeting(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for greeting."""
+        plan.add_action(TaskAction(
+            action="respond_greeting",
+            target="",
+            expected_result="Friendly greeting responded",
+            verification=f"Check greeting was delivered",
+        ))
+    
+    def _plan_farewell(self, plan: TaskPlan, intent: DetectedIntent, request: UserRequest):
+        """Plan for farewell."""
+        plan.add_action(TaskAction(
+            action="respond_farewell",
+            target="",
+            expected_result="Farewell responded",
+            verification=f"Check farewell was delivered",
+        ))
+    
+    def _execute_plan(self, plan: TaskPlan, 
+                  context: TaskContext,
+                  request: UserRequest) -> Dict[str, Any]:
         """
         Execute the action plan step by step.
         
@@ -449,10 +837,16 @@ class IntelligenceEngine:
         results = []
         actions_taken = []
         
-        for step in plan.steps:
-            skill_name = step.get("skill", "core_skill")
-            action = step.get("action", "execute")
-            params = step.get("params", {})
+        for i, step in enumerate(plan.actions):
+            skill_name = step.params.get("skill", "core_skill") if step.params else "core_skill"
+            action = step.action
+            params = step.params or {}
+            
+            # Check prerequisites
+            self._check_prerequisites(plan, step, context)
+            
+            # Check dependencies - ensure prerequisite actions are complete
+            self._check_dependencies(plan, step, context, request)
             
             try:
                 result = self._execute_action(skill_name, action, params)
@@ -461,6 +855,10 @@ class IntelligenceEngine:
                 if isinstance(result, dict):
                     actions_taken.append(result.get("action", action))
                     if not result.get("success", True) and "success" in result:
+                        # Handle failure - try recovery or stop
+                        if i + 1 < len(plan.actions):
+                            # Don't continue with dependent actions
+                            break
                         return result
                 else:
                     actions_taken.append(action)
@@ -474,14 +872,37 @@ class IntelligenceEngine:
                     "error": e,
                 }
         
+        # Generate response based on results
         message = self._generate_response(results, plan)
+        
+        # Update context with last results
+        if results and plan.context:
+            plan.context.last_result = results[-1] if results else None
         
         return {
             "success": True,
             "message": message,
             "actions_taken": actions_taken,
-            "intent": plan.steps[0].get("params", {}).get("target", "") if plan.steps else "",
+            "intent": plan.actions[0].target if plan.actions else "",
+            "context_updates": plan.context,
         }
+    
+    def _check_prerequisites(self, plan: TaskPlan, step: TaskAction, context: TaskContext):
+        """Check if prerequisites are met before executing a step."""
+        for prereq in plan.prerequisites:
+            # Simple prerequisite check - in a full implementation
+            # this would verify the actual state
+            pass
+    
+    def _check_dependencies(self, plan: TaskPlan, step: TaskAction, context: TaskContext, request: UserRequest):
+        """Check if action dependencies are satisfied."""
+        depends_on = step.depends_on
+        if depends_on and depends_on in plan.dependencies:
+            # Check if dependent actions completed successfully
+            deps = plan.dependencies[depends_on]
+            for dep in deps:
+                # In a full implementation, check if dep action completed
+                pass
     
     def _execute_action(self, skill_name: str, action: str, 
                         params: Dict) -> Dict[str, Any]:
@@ -493,14 +914,66 @@ class IntelligenceEngine:
             if skill_name in SKILL_REGISTRY:
                 skill = SKILL_REGISTRY[skill_name]
                 
-                if hasattr(skill, action):
-                    method = getattr(skill, action)
-                    result = method(**params)
-                    return result if isinstance(result, dict) else {
-                        "success": True,
-                        "action": action,
-                        "result": result,
+                # Build an Action object so the skill's execute() method
+                # can dispatch based on action_type (e.g. SEARCH_WB, CLICK, etc.)
+                from avora_backend.action_model import Action, ActionType
+                action_obj = Action(
+                    action_type=ActionType(action),
+                    target=params.get("target", ""),
+                    parameters=params,
+                )
+                
+                # Skills handle action routing internally via their execute() method.
+                # Use asyncio.run() to execute the async execute method.
+                if hasattr(skill, 'execute') and callable(skill.execute):
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # If we're already in an async context, use spawn
+                        result = asyncio.run(skill.execute(action_obj))
+                        return result if isinstance(result, dict) else {
+                            "success": True,
+                            "action": action,
+                            "result": result,
                     }
+                    except RuntimeError:
+                        # No running loop — safe to use asyncio.run()
+                        result = asyncio.run(skill.execute(action_obj))
+                        return result if isinstance(result, dict) else {
+                            "success": True,
+                            "action": action,
+                            "result": result,
+                        }
+                else:
+                    # Fallback: try direct method call if execute not available
+                    if hasattr(skill, action):
+                        method = getattr(skill, action)
+                        # If the method is async, try to run it
+                        import asyncio
+                        if asyncio.iscoroutinefunction(method):
+                            try:
+                                loop = asyncio.get_running_loop()
+                                result = loop.run_until_complete(method(**params))
+                                return result if isinstance(result, dict) else {
+                                    "success": True,
+                                    "action": action,
+                                    "result": result,
+                                }
+                            except RuntimeError:
+                                result = asyncio.run(method(**params))
+                                return result if isinstance(result, dict) else {
+                                    "success": True,
+                                    "action": action,
+                                    "result": result,
+                                }
+                        else:
+                            result = method(**params)
+                            return result if isinstance(result, dict) else {
+                                "success": True,
+                                "action": action,
+                                "result": result,
+                            }
+        
         except ImportError:
             pass
         except Exception as e:
@@ -508,6 +981,31 @@ class IntelligenceEngine:
         
         if skill_name == "launcher_skill" and action == "open_application":
             return self._fallback_launch(params)
+        
+        # Handle search_web for browser_skill as fallback
+        if skill_name == "browser_skill" and action == "search_web":
+            from avora_backend.skills.browser_skill import BrowserSkill
+            skill = SKILL_REGISTRY.get("browser_skill")
+            if skill:
+                query = params.get("query", "")
+                if query:
+                    # Direct synchronous search call as fallback
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        result = loop.run_until_complete(skill.search(query))
+                        return result if isinstance(result, dict) else {
+                            "success": True,
+                            "action": action,
+                            "result": result,
+                        }
+                    except RuntimeError:
+                        result = asyncio.run(skill.search(query))
+                        return result if isinstance(result, dict) else {
+                            "success": True,
+                            "action": action,
+                            "result": result,
+                        }
         
         return {
             "success": False,
@@ -538,7 +1036,7 @@ class IntelligenceEngine:
         }
     
     def _generate_response(self, results: List[Dict], 
-                          plan: ActionPlan) -> str:
+                          plan: TaskPlan) -> str:
         """Generate the response message."""
         if not results:
             return "Done."
@@ -553,7 +1051,7 @@ class IntelligenceEngine:
         return " ".join(messages) if messages else "Completed."
     
     def _handle_unknown_intent(self, request: UserRequest,
-                               context: Optional[ContextSnapshot]) -> Dict[str, Any]:
+                               context: Optional[TaskContext]) -> Dict[str, Any]:
         """Handle requests where intent is unclear."""
         return {
             "success": False,
@@ -587,7 +1085,9 @@ __all__ = [
     "IntentType",
     "UserRequest",
     "DetectedIntent",
-    "ContextSnapshot",
-    "ActionPlan",
-    "ExecutionResult",
+    "TaskContext",
+    "TaskPlan",
+    "TaskEntity",
+    "TaskAction",
+    "TaskResult",
 ]

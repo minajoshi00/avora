@@ -1,8 +1,17 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from ai_logic import classify_request, extract_image_prompt
+from ai_logic import _analyze_user_input, classify_request, extract_image_prompt
 from character import Character
+
+
+def test_analyze_user_input_no_name_error_on_simple_message():
+    """Regression: 'hello bro' used to raise NameError in Level-2 context
+    inference inside _analyze_user_input, which crashed the entire chat
+    pipeline and surfaced as 'Something went wrong while processing...'."""
+    analysis = _analyze_user_input("hello bro")
+    assert isinstance(analysis, dict)
+    assert "history_relevant" in analysis
 
 
 @pytest.fixture(scope="module")
