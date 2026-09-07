@@ -163,6 +163,8 @@ from voice import (
     stop_speaking,
 )
 
+from voice_session import VoiceSession, VoiceSessionState
+
 # ============================================================
 # VOICE RECOGNITION WORKER (Proper QThread)
 # ============================================================
@@ -305,6 +307,9 @@ class MainWindow(QWidget):
         self.is_closing = False
 
         self.voice_enabled = bool(is_voice_enabled())
+
+        self.voice_mode = False
+        self.voice_session: Optional[VoiceSession] = None
 
         self.character_enabled = bool(is_character_enabled())
 
@@ -916,6 +921,31 @@ class MainWindow(QWidget):
         self.update_voice_button()
 
         sidebar_layout.addWidget(self.voice_button)
+
+        self.voice_mode_button = QPushButton("🎙️ Live Voice")
+        self.voice_mode_button.setObjectName("VoiceModeButton")
+        self.voice_mode_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.voice_mode_button.setFixedHeight(32)
+        self.voice_mode_button.clicked.connect(self.toggle_voice_mode)
+        self.voice_mode_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 8px;
+                padding: 4px 10px;
+                color: #9A9AAC;
+                font-size: 12px;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.05);
+                color: #F5F5F5;
+            }
+            QPushButton[voiceMode="true"] {
+                color: #00FF88;
+            }
+        """)
+        sidebar_layout.addWidget(self.voice_mode_button)
 
         # ====================================================
         # SETTINGS
@@ -2183,6 +2213,110 @@ class MainWindow(QWidget):
         self.update_voice_button()
 
     # ========================================================
+    # VOICE MODE (Continuous Conversation)
+    # ========================================================
+
+    def toggle_voice_mode(self):
+        if self.voice_mode:
+            self.stop_voice_mode()
+            return
+
+        if self.is_processing:
+            return
+
+        self.start_voice_mode()
+
+    def start_voice_mode(self):
+        if self.voice_session is not None and self.voice_session.state != VoiceSessionState.IDLE:
+            return
+
+        try:
+            stop_speaking()
+        except Exception:
+            pass
+
+        try:
+            listen_stop()
+        except Exception:
+            pass
+
+        self.voice_mode = True
+        self.voice_mode_button.setProperty("voiceMode", True)
+        self.voice_mode_button.style().unpolish(self.voice_mode_button)
+        self.voice_mode_button.style().polish(self.voice_mode_button)
+        self.voice_mode_button.setText("🎙️ Stop Voice")
+
+        self.voice_session = VoiceSession(
+            on_state_changed=self._on_voice_session_state_changed,
+            on_user_text=self._on_voice_session_user_text,
+            on_ai_text=self._on_voice_session_ai_text,
+            on_error=self._on_voice_session_error,
+        )
+
+        self.voice_session.start()
+
+    def stop_voice_mode(self):
+        self.voice_mode = False
+        self.voice_mode_button.setProperty("voiceMode", False)
+        self.voice_mode_button.style().unpolish(self.voice_mode_button)
+        self.voice_mode_button.style().polish(self.voice_mode_button)
+        self.voice_mode_button.setText("🎙️ Live Voice")
+
+        if self.voice_session is not None:
+            try:
+                self.voice_session.stop()
+            except Exception:
+                pass
+            self.voice_session = None
+
+        self.update_status("ready", "Ready")
+        self.user_input.setPlaceholderText("Message your AI Friend...")
+
+    def _on_voice_session_state_changed(self, state: str):
+        try:
+            if state == VoiceSessionState.LISTENING:
+                self.update_status("listening", "Listening...")
+                self.user_input.setPlaceholderText("Listening... speak now")
+            elif state == VoiceSessionState.USER_SPEAKING:
+                self.update_status("listening", "Listening...")
+            elif state == VoiceSessionState.THINKING:
+                self.update_status("thinking", "Thinking")
+                self.user_input.setPlaceholderText("Avora is thinking...")
+            elif state == VoiceSessionState.AVORA_SPEAKING:
+                self.update_status("speaking", "Speaking")
+                self.user_input.setPlaceholderText("Avora is speaking...")
+            elif state == VoiceSessionState.INTERRUPTED:
+                self.update_status("listening", "Listening...")
+            else:
+                self.update_status("ready", "Ready")
+                self.user_input.setPlaceholderText("Message your AI Friend...")
+        except Exception:
+            pass
+
+    def _on_voice_session_user_text(self, text: str):
+        if not text:
+            return
+        QTimer.singleShot(0, lambda: self._send_voice_text(text))
+
+    def _send_voice_text(self, text: str):
+        try:
+            self.user_input.setText(text)
+            self.send_message()
+        except Exception as error:
+            print("[VOICE MODE] Send error:", error)
+
+    def _on_voice_session_ai_text(self, text: str):
+        if self.voice_session is not None:
+            try:
+                self.voice_session.set_speaking()
+            except Exception:
+                pass
+
+    def _on_voice_session_error(self, error: str):
+        print("[VOICE MODE ERROR]", error)
+        QTimer.singleShot(0, self.stop_voice_mode)
+
+    # ========================================================
     # VOICE INPUT (MICROPHONE) - ChatGPT-Style
     # ========================================================
 
@@ -3179,10 +3313,18 @@ class MainWindow(QWidget):
         if self.companion is not None:
             self.companion.on_ai_response(str(full_text))
 
-        # Voice
-        should_speak = self.voice_enabled and bool(
-            get_setting("voice.speak_after_response", True)
-        )
+        if self.voice_mode and self.voice_session is not None:
+            try:
+                self.voice_session.set_speaking()
+                self.voice_session._on_ai_text(str(full_text))
+            except Exception:
+                pass
+            should_speak = True
+        else:
+            should_speak = self.voice_enabled and bool(
+                get_setting("voice.speak_after_response", True)
+            )
+
         if should_speak:
             self.start_voice(self._current_full_text)
         else:
